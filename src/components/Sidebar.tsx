@@ -21,7 +21,6 @@ export function Sidebar() {
     currentView,
     setCurrentView,
     playlists,
-    favorites,
     createPlaylist,
     deletePlaylist,
     renamePlaylist,
