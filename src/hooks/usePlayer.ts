@@ -7,12 +7,36 @@ import { usePlayerStore } from '../store/playerStore';
 let singletonAudio: HTMLAudioElement | null = null;
 let listenersAttached = false;
 
-function getAudio(): HTMLAudioElement {
+export function getAudio(): HTMLAudioElement {
   if (!singletonAudio) {
     singletonAudio = new Audio();
     singletonAudio.preload = 'metadata';
   }
   return singletonAudio;
+}
+
+export function seekAudio(targetTime: number) {
+  const audio = getAudio();
+  const state = usePlayerStore.getState();
+  if (!state.currentTrack) return;
+
+  const maxDuration = audio.duration && !isNaN(audio.duration) && audio.duration > 0 
+    ? audio.duration 
+    : state.duration || 0;
+    
+  let clampedTime = Math.max(0, targetTime);
+  if (maxDuration > 0) {
+    clampedTime = Math.min(clampedTime, maxDuration);
+  }
+
+  if (isFinite(clampedTime)) {
+    try {
+      audio.currentTime = clampedTime;
+    } catch (e) {
+      console.warn('[usePlayer] Seek error:', e);
+    }
+    state.setCurrentTime(clampedTime);
+  }
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────
@@ -37,7 +61,6 @@ export function usePlayer() {
     previousTrack,
     setVolume,
     toggleMute,
-    seekTo,
   } = usePlayerStore();
 
   // ── Attach event listeners ONCE (module-level singleton) ──────────
@@ -101,21 +124,26 @@ export function usePlayer() {
   // ── Sync track changes → same singleton Audio ────────────────────
   useEffect(() => {
     if (currentTrack && audio) {
-      audio.src = currentTrack.audio;
-      audio.load();
+      if (audio.src !== currentTrack.audio) {
+        audio.src = currentTrack.audio;
+        audio.load();
+        if (isPlaying) {
+          audio.play().catch(console.error);
+        }
+      }
     }
-  }, [currentTrack, audio]);
+  }, [currentTrack, audio, isPlaying]);
 
   // ── Sync play/pause → same singleton Audio ───────────────────────
   useEffect(() => {
-    if (audio) {
-      if (isPlaying) {
+    if (audio && currentTrack) {
+      if (isPlaying && audio.paused) {
         audio.play().catch(console.error);
-      } else {
+      } else if (!isPlaying && !audio.paused) {
         audio.pause();
       }
     }
-  }, [isPlaying, audio]);
+  }, [isPlaying, audio, currentTrack]);
 
   // ── Sync volume → same singleton Audio ───────────────────────────
   useEffect(() => {
@@ -150,12 +178,9 @@ export function usePlayer() {
 
   const seek = useCallback(
     (time: number) => {
-      seekTo(time);
-      if (audio) {
-        audio.currentTime = time;
-      }
+      seekAudio(time);
     },
-    [seekTo, audio],
+    [],
   );
 
   const changeVolume = useCallback(

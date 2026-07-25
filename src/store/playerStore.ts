@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { Track, Playlist, PlaylistTrack, PlayerState, SearchState } from '../types/types';
+import { STORAGE_KEYS, PLAYER_DEFAULTS } from '../config/constants';
 
 interface PlayerStore extends PlayerState {
   playTrack: (track: Track, queue?: Track[], index?: number) => void;
@@ -110,7 +111,7 @@ export const usePlayerStore = create<AppStore>()(
     isPlaying: false,
     currentTime: 0,
     duration: 0,
-    volume: loadFromLocalStorage('player-volume', 80),
+    volume: loadFromLocalStorage(STORAGE_KEYS.VOLUME, PLAYER_DEFAULTS.DEFAULT_VOLUME),
     isMuted: false,
     queue: [],
     currentIndex: -1,
@@ -123,12 +124,12 @@ export const usePlayerStore = create<AppStore>()(
     error: null,
     trending: [],
 
-    playlists: loadFromLocalStorage('playlists', []),
-    favorites: loadFromLocalStorage('favorites', []),
+    playlists: loadFromLocalStorage(STORAGE_KEYS.PLAYLISTS, []),
+    favorites: loadFromLocalStorage(STORAGE_KEYS.FAVORITES, []),
 
     isSidebarOpen: false,
     currentView: 'search',
-    theme: loadFromLocalStorage('theme', 'dark'),
+    theme: loadFromLocalStorage(STORAGE_KEYS.THEME, 'dark'),
 
     playTrack: (track: Track, queue?: Track[], index?: number) => {
       const state = get();
@@ -257,14 +258,14 @@ export const usePlayerStore = create<AppStore>()(
       };
       const newPlaylists = [...state.playlists, newPlaylist];
       set({ playlists: newPlaylists });
-      saveToLocalStorage('playlists', newPlaylists);
+      saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
     },
 
     deletePlaylist: (id: string) => {
       const state = get();
       const newPlaylists = state.playlists.filter(p => p.id !== id);
       set({ playlists: newPlaylists });
-      saveToLocalStorage('playlists', newPlaylists);
+      saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
     },
 
     renamePlaylist: (id: string, name: string) => {
@@ -274,7 +275,7 @@ export const usePlayerStore = create<AppStore>()(
         p.id === id ? { ...p, name: uniqueName, updatedAt: Date.now() } : p
       );
       set({ playlists: newPlaylists });
-      saveToLocalStorage('playlists', newPlaylists);
+      saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
     },
 
     addTrackToPlaylist: (playlistId: string, track: Track) => {
@@ -294,7 +295,7 @@ export const usePlayerStore = create<AppStore>()(
           : p
       );
       set({ playlists: newPlaylists });
-      saveToLocalStorage('playlists', newPlaylists);
+      saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
     },
 
     removeTrackFromPlaylist: (playlistId: string, trackId: string) => {
@@ -317,7 +318,7 @@ export const usePlayerStore = create<AppStore>()(
       if (!state.favorites.find(t => t.id === track.id)) {
         const newFavorites = [...state.favorites, track];
         set({ favorites: newFavorites });
-        saveToLocalStorage('favorites', newFavorites);
+        saveToLocalStorage(STORAGE_KEYS.FAVORITES, newFavorites);
       }
     },
 
@@ -330,7 +331,7 @@ export const usePlayerStore = create<AppStore>()(
 
     clearFavorites: () => {
       set({ favorites: [] });
-      saveToLocalStorage('favorites', []);
+      saveToLocalStorage(STORAGE_KEYS.FAVORITES, []);
     },
 
     exportPlaylist: (id: string) => {
@@ -361,7 +362,7 @@ export const usePlayerStore = create<AppStore>()(
       };
       const newPlaylists = [...state.playlists, importedPlaylist];
       set({ playlists: newPlaylists });
-      saveToLocalStorage('playlists', newPlaylists);
+      saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
     },
 
     toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
@@ -370,7 +371,7 @@ export const usePlayerStore = create<AppStore>()(
     
     setTheme: (theme: 'light' | 'dark') => {
       set({ theme });
-      saveToLocalStorage('theme', theme);
+      saveToLocalStorage(STORAGE_KEYS.THEME, theme);
     }
   }))
 );

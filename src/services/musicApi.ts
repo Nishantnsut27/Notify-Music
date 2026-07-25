@@ -1,20 +1,16 @@
 import type { Track } from '../types/types';
-
-const API_BASE_URL = 'https://notify-music-player.onrender.com/api/music';
+import { API_ENDPOINTS, PLAYER_DEFAULTS } from '../config/constants';
+import { fetchJson, type ApiResponse } from './apiClient';
+import { formatDuration, getTrackUrl, getArtistUrl } from '../utils/formatters';
 
 export class MusicAPI {
-  static async searchTracks(query: string, limit = 20): Promise<Track[]> {
+  static async searchTracks(query: string, limit = PLAYER_DEFAULTS.DEFAULT_SEARCH_LIMIT): Promise<Track[]> {
     if (!query || !query.trim()) return [];
 
     try {
-      const url = `${API_BASE_URL}/search?q=${encodeURIComponent(query.trim())}&limit=${limit}`;
-      const response = await fetch(url);
+      const url = `${API_ENDPOINTS.SEARCH}?q=${encodeURIComponent(query.trim())}&limit=${limit}`;
+      const body = await fetchJson<ApiResponse<Track[]>>(url);
 
-      if (!response.ok) {
-        throw new Error(`Music API response error! Status: ${response.status}`);
-      }
-
-      const body = await response.json();
       if (!body.success || !Array.isArray(body.data)) {
         throw new Error('Invalid response payload format from music backend.');
       }
@@ -23,28 +19,23 @@ export class MusicAPI {
         throw new Error(`No music found for "${query}". Try searching for genres like rap, pop, electronic, or jazz.`);
       }
 
-      return body.data as Track[];
+      return body.data;
     } catch (error) {
       console.error('[MusicAPI] Search error:', error);
       throw error;
     }
   }
 
-  static async getTrendingTracks(limit = 25): Promise<Track[]> {
+  static async getTrendingTracks(limit = PLAYER_DEFAULTS.DEFAULT_TRENDING_LIMIT): Promise<Track[]> {
     try {
-      const url = `${API_BASE_URL}/trending?limit=${limit}`;
-      const response = await fetch(url);
+      const url = `${API_ENDPOINTS.TRENDING}?limit=${limit}`;
+      const body = await fetchJson<ApiResponse<Track[]>>(url);
 
-      if (!response.ok) {
-        throw new Error(`Music API response error! Status: ${response.status}`);
-      }
-
-      const body = await response.json();
       if (!body.success || !Array.isArray(body.data)) {
         throw new Error('Invalid response payload format from music backend.');
       }
 
-      return body.data as Track[];
+      return body.data;
     } catch (error) {
       console.error('[MusicAPI] Get trending tracks error:', error);
       throw new Error('🎵 Trending music is temporarily unavailable. Please try searching for your favorite tracks instead.');
@@ -53,12 +44,9 @@ export class MusicAPI {
 
   static async getTrackById(id: string): Promise<Track | null> {
     try {
-      const url = `${API_BASE_URL}/song/${encodeURIComponent(id)}`;
-      const response = await fetch(url);
-      if (!response.ok) return null;
-
-      const body = await response.json();
-      return body.success ? (body.data as Track) : null;
+      const url = API_ENDPOINTS.SONG(id);
+      const body = await fetchJson<ApiResponse<Track>>(url);
+      return body.success ? body.data : null;
     } catch (error) {
       console.error('[MusicAPI] Get track by ID error:', error);
       return null;
@@ -67,43 +55,22 @@ export class MusicAPI {
 
   static async getTracksByArtist(artistId: string): Promise<Track[]> {
     try {
-      const url = `${API_BASE_URL}/artist/${encodeURIComponent(artistId)}`;
-      const response = await fetch(url);
-      if (!response.ok) return [];
-
-      const body = await response.json();
-      return body.success && body.data?.topSongs ? (body.data.topSongs as Track[]) : [];
+      const url = API_ENDPOINTS.ARTIST(artistId);
+      const body = await fetchJson<ApiResponse<{ topSongs?: Track[] }>>(url);
+      return body.success && body.data?.topSongs ? body.data.topSongs : [];
     } catch (error) {
       console.error('[MusicAPI] Get tracks by artist error:', error);
       return [];
     }
   }
 
-  static async getTracksByGenre(genre: string, limit = 20): Promise<Track[]> {
+  static async getTracksByGenre(genre: string, limit = PLAYER_DEFAULTS.DEFAULT_SEARCH_LIMIT): Promise<Track[]> {
     return this.searchTracks(genre, limit);
   }
 }
 
-// Backward compatibility alias for existing code
+// Backward compatibility exports
 export const JamendoAPI = MusicAPI;
-
-export const formatDuration = (seconds: number): string => {
-  if (!seconds || isNaN(seconds) || seconds < 0) {
-    return '0:00';
-  }
-
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-};
-
-export const getTrackUrl = (trackId: string): string => {
-  return `https://www.jamendo.com/track/${trackId}`;
-};
-
-export const getArtistUrl = (artistId: string): string => {
-  return `https://www.jamendo.com/artist/${artistId}`;
-};
-
+export { formatDuration, getTrackUrl, getArtistUrl };
 export const getJamendoTrackUrl = getTrackUrl;
 export const getJamendoArtistUrl = getArtistUrl;

@@ -38,8 +38,26 @@ export function Sidebar() {
         closeSidebar();
       }
     };
+
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      if (!isSidebarOpen || window.innerWidth > 768) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('.sidebar') || target.closest('.mobile-menu-toggle')) {
+        return;
+      }
+      closeSidebar();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick, { passive: true });
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
   }, [isSidebarOpen, closeSidebar]);
 
   const handleNavClick = (view: 'search' | 'favorites' | 'playlists') => {

@@ -11,7 +11,6 @@ import { EmptyFavorites, EmptyPlaylists } from './components/EmptyState';
 import { usePlayerStore } from './store/playerStore';
 import { useToastStore } from './store/toastStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import { usePlayer } from './hooks/usePlayer';
 import { MusicAPI } from './services/musicApi';
 import type { Playlist } from './types/types';
 
@@ -46,21 +45,7 @@ function App() {
     renamePlaylist
   } = usePlayerStore();
 
-  const {
-    togglePlayPause,
-    changeVolume,
-    volume
-  } = usePlayer();
-
-  useKeyboardShortcuts({
-    ' ': togglePlayPause,
-    'ArrowLeft': () => {
-    },
-    'ArrowRight': () => {
-    },
-    'ArrowUp': () => changeVolume(Math.min(100, volume + 5)),
-    'ArrowDown': () => changeVolume(Math.max(0, volume - 5))
-  });
+  useKeyboardShortcuts();
 
   const handleEditPlaylist = (playlistId: string, currentName: string) => {
     setEditingPlaylist(playlistId);

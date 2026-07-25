@@ -1,7 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { usePlayer } from '../hooks/usePlayer';
 import { usePlayerStore } from '../store/playerStore';
-import { formatDuration } from '../services/jamendoAPI';
+import { useToastStore } from '../store/toastStore';
+import { formatDuration } from '../utils/formatters';
 import { AudioVisualizer } from './AudioVisualizer';
 
 export function PlayerControls() {
@@ -9,9 +10,42 @@ export function PlayerControls() {
   const [hoverProgress, setHoverProgress] = useState(0);
   const [hoverVolume, setHoverVolume] = useState(0);
   const [volumeChangeIndicator, setVolumeChangeIndicator] = useState(false);
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= 768 : false);
   const progressRef = useRef<HTMLDivElement>(null);
   const volumeRef = useRef<HTMLDivElement>(null);
   const volumeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const addToast = useToastStore(state => state.addToast);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!showVolume) return;
+
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      
+      if (target.closest('.volume') || target.closest('.volume_button')) {
+        return;
+      }
+      
+      setShowVolume(false);
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick, { passive: true });
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [showVolume]);
   
   const {
     currentTrack,
@@ -45,21 +79,23 @@ export function PlayerControls() {
   const isFavorite = currentTrack ? favorites.some(f => f.id === currentTrack.id) : false;
 
   const handleVolumeMouseEnter = useCallback(() => {
+    if (isMobile) return;
     if (volumeTimeoutRef.current) {
       clearTimeout(volumeTimeoutRef.current);
       volumeTimeoutRef.current = null;
     }
     setShowVolume(true);
-  }, []);
+  }, [isMobile]);
 
   const handleVolumeMouseLeave = useCallback(() => {
+    if (isMobile) return;
     if (volumeTimeoutRef.current) {
       clearTimeout(volumeTimeoutRef.current);
     }
     volumeTimeoutRef.current = setTimeout(() => {
       setShowVolume(false);
     }, 250);
-  }, []);
+  }, [isMobile]);
 
   const updateProgressFromPointer = useCallback((e: React.PointerEvent | PointerEvent) => {
     if (!progressRef.current || duration === 0 || !currentTrack) return;
@@ -96,7 +132,6 @@ export function PlayerControls() {
       try {
         e.currentTarget.releasePointerCapture(e.pointerId);
       } catch (err) {
-        // Pointer capture may have already been released automatically by browser
         void err;
       }
     }
@@ -105,8 +140,14 @@ export function PlayerControls() {
   const updateVolumeFromPointer = useCallback((e: React.PointerEvent | PointerEvent) => {
     if (!volumeRef.current) return;
     const rect = volumeRef.current.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const percent = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
+    let percent = 0;
+    if (window.innerWidth <= 768) {
+      const distFromBottom = rect.bottom - e.clientY;
+      percent = Math.max(0, Math.min(100, (distFromBottom / rect.height) * 100));
+    } else {
+      const clickX = e.clientX - rect.left;
+      percent = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
+    }
     changeVolume(percent);
   }, [changeVolume]);
 
@@ -123,8 +164,14 @@ export function PlayerControls() {
       updateVolumeFromPointer(e);
     } else if (volumeRef.current) {
       const rect = volumeRef.current.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const percent = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
+      let percent = 0;
+      if (window.innerWidth <= 768) {
+        const distFromBottom = rect.bottom - e.clientY;
+        percent = Math.max(0, Math.min(100, (distFromBottom / rect.height) * 100));
+      } else {
+        const clickX = e.clientX - rect.left;
+        percent = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
+      }
       setHoverVolume(percent);
     }
   }, [updateVolumeFromPointer]);
@@ -135,7 +182,6 @@ export function PlayerControls() {
       try {
         e.currentTarget.releasePointerCapture(e.pointerId);
       } catch (err) {
-        // Pointer capture may have already been released automatically by browser
         void err;
       }
       setTimeout(() => setVolumeChangeIndicator(false), 800);
@@ -147,8 +193,26 @@ export function PlayerControls() {
     
     if (isFavorite) {
       removeFromFavorites(currentTrack.id);
+      addToast({
+        type: 'info',
+        title: 'Removed from Favorites',
+        message: `"${currentTrack.name}" removed from favorites`,
+      });
     } else {
       addToFavorites(currentTrack);
+      addToast({
+        type: 'success',
+        title: 'Added to Favorites',
+        message: `"${currentTrack.name}" added to favorites`,
+      });
+    }
+  };
+
+  const handleVolumeClick = () => {
+    if (isMobile) {
+      setShowVolume((prev) => !prev);
+    } else {
+      mute();
     }
   };
 
@@ -169,15 +233,14 @@ export function PlayerControls() {
       return (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <polygon points="11,5 6,9 2,9 2,15 6,15 11,19"/>
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          <path d="M15.54,8.46 a5,5 0 0,1 0,7.07"/>
         </svg>
       );
     } else {
       return (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <polygon points="11,5 6,9 2,9 2,15 6,15 11,19"/>
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          <path d="M19.07,4.93 a10,10 0 0,1 0,14.14M15.54,8.46 a5,5 0 0,1 0,7.07"/>
         </svg>
       );
     }
@@ -188,20 +251,15 @@ export function PlayerControls() {
       <div className="spotify-player-card">
         <div className="player-empty">
           <div className="pfp">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ background: 'transparent' }}>
-              <circle cx="12" cy="12" r="2"/>
-              <path d="M12 1v6m0 6v6"/>
-              <path d="m21 12-6-6-6 6-6-6"/>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 18V5l12-2v13" />
+              <circle cx="6" cy="18" r="3" />
+              <circle cx="18" cy="16" r="3" />
             </svg>
           </div>
           <div className="track-info-empty">
             <div className="title-1">No track selected</div>
             <div className="title-2">Choose a song to start playing</div>
-          </div>
-        </div>
-        <div className="progress-bar-container empty-progress">
-          <div className="progress-bar-track">
-            <div className="progress-bar-fill" style={{ width: '0%' }} />
           </div>
         </div>
       </div>
@@ -210,66 +268,73 @@ export function PlayerControls() {
 
   return (
     <div className="spotify-player-card">
+      <div 
+        className="progress-bar-container"
+        ref={progressRef}
+        onPointerDown={handleProgressPointerDown}
+        onPointerMove={handleProgressPointerMove}
+        onPointerUp={handleProgressPointerUp}
+        role="slider"
+        aria-label="Seek track"
+        aria-valuenow={Math.round(progress)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (!currentTrack || duration === 0) return;
+          if (e.key === 'ArrowRight') {
+            seek(Math.min(duration, currentTime + 5));
+          } else if (e.key === 'ArrowLeft') {
+            seek(Math.max(0, currentTime - 5));
+          }
+        }}
+      >
+        <div 
+          className="progress-bar-hover" 
+          style={{ width: `${hoverProgress}%` }}
+        />
+        <div 
+          className="progress-bar-fill" 
+          style={{ width: `${progress}%` }}
+        />
+        <div 
+          className="progress-bar-thumb"
+          style={{ left: `${progress}%` }}
+        />
+      </div>
+
       <div className="top">
         <div className="pfp">
-          {currentTrack.image && currentTrack.image !== '/placeholder-album.svg' ? (
+          {currentTrack.image ? (
             <img src={currentTrack.image} alt={currentTrack.name} />
           ) : (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ background: 'transparent' }}>
-              <path d="M9 18V5l12-2v13"/>
-              <circle cx="6" cy="18" r="3"/>
-              <circle cx="18" cy="16" r="3"/>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 18V5l12-2v13" />
+              <circle cx="6" cy="18" r="3" />
+              <circle cx="18" cy="16" r="3" />
             </svg>
           )}
         </div>
-        
+
         <div className="track-info">
           <div className="title-1">{currentTrack.name}</div>
           <div className="title-2">{currentTrack.artist_name}</div>
         </div>
 
-        {currentTrack && (
-          <div className="player-visualizer-container" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
-            <AudioVisualizer isPlaying={isPlaying} size="medium" barCount={5} color="#1db954" />
-          </div>
+        {isPlaying && (
+          <AudioVisualizer isPlaying={isPlaying} size="medium" />
         )}
       </div>
 
-      {currentTrack && (
-        <div 
-          className="progress-bar-container"
-          ref={progressRef}
-          onPointerDown={handleProgressPointerDown}
-          onPointerMove={handleProgressPointerMove}
-          onPointerUp={handleProgressPointerUp}
-          onMouseLeave={() => setHoverProgress(0)}
-        >
-          <div className="progress-bar-track">
-            <div 
-              className="progress-bar-fill" 
-              style={{ width: `${progress}%` }}
-            />
-            <div 
-              className="progress-bar-thumb"
-              style={{ left: `${progress}%` }}
-            />
-          </div>
-          {hoverProgress > 0 && duration > 0 && (
-            <div className="progress-tooltip" style={{ left: `${hoverProgress}%` }}>
-              {formatDuration(Math.max(0, (hoverProgress / 100) * duration))}
-            </div>
-          )}
-        </div>
-      )}
-
       <div className="controls">
         <button
-          className="control-btn"
+          className={`control-btn favorite-btn ${isFavorite ? 'is-favorite' : ''}`}
           onClick={handleToggleFavorite}
-          title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+          aria-label={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill={isFavorite ? '#1db954' : 'none'} stroke="currentColor" strokeWidth="2">
-            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill={isFavorite ? '#1db954' : 'none'} stroke={isFavorite ? '#1db954' : 'currentColor'} strokeWidth="2">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
           </svg>
         </button>
 
@@ -280,7 +345,7 @@ export function PlayerControls() {
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polygon points="19,20 9,12 19,4"/>
-            <line x1="5" y1="19" x2="5" y2="5"/>
+            <line x1="5" y1="5" x2="5" y2="19"/>
           </svg>
         </button>
 
@@ -290,12 +355,12 @@ export function PlayerControls() {
           title={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying ? (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="4" width="4" height="16"/>
               <rect x="14" y="4" width="4" height="16"/>
             </svg>
           ) : (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
               <polygon points="5,3 19,12 5,21"/>
             </svg>
           )}
@@ -314,11 +379,11 @@ export function PlayerControls() {
 
         <button
           className="control-btn volume_button"
-          onClick={mute}
+          onClick={handleVolumeClick}
           onMouseEnter={handleVolumeMouseEnter}
           onMouseLeave={handleVolumeMouseLeave}
-          title={isMuted ? 'Unmute' : 'Mute'}
-          aria-label={isMuted ? 'Unmute audio' : 'Mute audio'}
+          title={isMobile ? 'Adjust volume' : (isMuted ? 'Unmute' : 'Mute')}
+          aria-label={isMobile ? 'Adjust volume' : (isMuted ? 'Unmute audio' : 'Mute audio')}
         >
           {getVolumeIcon()}
         </button>
@@ -365,17 +430,19 @@ export function PlayerControls() {
             }}
           >
             <div className="volume-track">
-              <div 
-                className="volume-hover"
-                style={{ width: `${hoverVolume}%` }}
-              />
+              {!isMobile && (
+                <div 
+                  className="volume-hover"
+                  style={{ width: `${hoverVolume}%` }}
+                />
+              )}
               <div 
                 className="green volume-fill" 
-                style={{ width: `${volumePercent}%` }}
+                style={isMobile ? { height: `${volumePercent}%`, bottom: 0, top: 'auto', width: '100%' } : { width: `${volumePercent}%` }}
               />
               <div 
                 className="circle volume-thumb"
-                style={{ left: `${volumePercent}%` }}
+                style={isMobile ? { bottom: `${volumePercent}%`, left: '50%', top: 'auto' } : { left: `${volumePercent}%` }}
               />
             </div>
           </div>
