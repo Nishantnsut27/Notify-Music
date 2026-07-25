@@ -815,21 +815,12 @@
 }
 
 @media (max-width: 768px) {
-  *,
-  *::before,
-  *::after {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-
   .track-item-modern,
   .track-item-modern.blurred,
   .track-item-modern:hover,
   .track-item-modern.active,
   .track-list-container-modern.has-hovered-track .track-item-modern,
   .track-list-container-modern.has-hovered-track .track-item-modern.hovered {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
     filter: none !important;
     opacity: 1 !important;
     transform: none !important;
@@ -955,10 +946,10 @@
   }
 
   .track-actions-modern .icon-button {
-    width: 30px;
-    height: 30px;
-    min-width: 30px;
-    min-height: 30px;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
   }
 
   .volume {

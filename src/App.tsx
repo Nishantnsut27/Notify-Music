@@ -24,6 +24,8 @@ function App() {
   const [showPlaylistActions, setShowPlaylistActions] = useState<string | null>(null);
   const [editingPlaylist, setEditingPlaylist] = useState<string | null>(null);
   const [editPlaylistName, setEditPlaylistName] = useState('');
+  const [playlistToRename, setPlaylistToRename] = useState<{ id: string; name: string } | null>(null);
+  const [renameInput, setRenameInput] = useState('');
   const [playlistToDelete, setPlaylistToDelete] = useState<{ id: string; name: string } | null>(null);
   const [showClearFavoritesModal, setShowClearFavoritesModal] = useState(false);
 
@@ -48,9 +50,22 @@ function App() {
   useKeyboardShortcuts();
 
   const handleEditPlaylist = (playlistId: string, currentName: string) => {
-    setEditingPlaylist(playlistId);
-    setEditPlaylistName(currentName);
+    setPlaylistToRename({ id: playlistId, name: currentName });
+    setRenameInput(currentName);
     setShowPlaylistActions(null);
+  };
+
+  const confirmRenamePlaylist = () => {
+    if (playlistToRename && renameInput.trim()) {
+      renamePlaylist(playlistToRename.id, renameInput.trim());
+      useToastStore.getState().addToast({
+        type: 'success',
+        title: 'Playlist Renamed',
+        message: `Renamed to "${renameInput.trim()}"`,
+      });
+      setPlaylistToRename(null);
+      setRenameInput('');
+    }
   };
 
   const handleSavePlaylistName = () => {
@@ -73,7 +88,13 @@ function App() {
 
   const confirmDeletePlaylist = () => {
     if (playlistToDelete) {
+      const deletedName = playlistToDelete.name;
       deletePlaylist(playlistToDelete.id);
+      useToastStore.getState().addToast({
+        type: 'info',
+        title: 'Playlist Deleted',
+        message: `Deleted "${deletedName}"`,
+      });
       setPlaylistToDelete(null);
     }
   };
@@ -104,6 +125,12 @@ function App() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
+    useToastStore.getState().addToast({
+      type: 'info',
+      title: 'Playlist Exported',
+      message: `Exported "${playlist.name}" JSON file`,
+    });
+
     setShowPlaylistActions(null);
   };
 
@@ -242,7 +269,7 @@ function App() {
             ) : (
               <div className="playlists-grid">
                 {playlists.map((playlist) => (
-                  <div key={playlist.id} className="playlist-card">
+                  <div key={playlist.id} className={`playlist-card ${showPlaylistActions === playlist.id ? 'menu-open' : ''}`}>
                     <div className="playlist-card-header">
                       <div className="playlist-card-info">
                         {editingPlaylist === playlist.id ? (
@@ -381,6 +408,26 @@ function App() {
       </main>
 
       <PlayerControls />
+
+      {playlistToRename && (
+        <ConfirmModal
+          isOpen={!!playlistToRename}
+          title="Rename Playlist"
+          message={`Enter a new name for "${playlistToRename.name}":`}
+          confirmText="Save Name"
+          cancelText="Cancel"
+          variant="primary"
+          showInput={true}
+          inputValue={renameInput}
+          inputPlaceholder="Playlist name"
+          onInputChange={setRenameInput}
+          onConfirm={confirmRenamePlaylist}
+          onCancel={() => {
+            setPlaylistToRename(null);
+            setRenameInput('');
+          }}
+        />
+      )}
 
       {playlistToDelete && (
         <ConfirmModal

@@ -36,7 +36,7 @@ interface PlaylistStore {
   favorites: Track[];
   
   
-  createPlaylist: (name: string) => void;
+  createPlaylist: (name: string) => Playlist;
   deletePlaylist: (id: string) => void;
   renamePlaylist: (id: string, name: string) => void;
   addTrackToPlaylist: (playlistId: string, track: Track) => void;
@@ -82,16 +82,16 @@ const getUniquePlaylistName = (baseName: string, existingPlaylists: Playlist[], 
   const existingNames = new Set(
     existingPlaylists
       .filter(p => p.id !== excludeId)
-      .map(p => p.name.trim().toLowerCase())
+      .map(p => p.name.trim())
   );
 
   const trimmedBase = baseName.trim();
-  if (!existingNames.has(trimmedBase.toLowerCase())) {
+  if (!existingNames.has(trimmedBase)) {
     return trimmedBase;
   }
 
   let counter = 1;
-  while (existingNames.has(`${trimmedBase} (${counter})`.toLowerCase())) {
+  while (existingNames.has(`${trimmedBase} (${counter})`)) {
     counter++;
   }
 
@@ -259,6 +259,7 @@ export const usePlayerStore = create<AppStore>()(
       const newPlaylists = [...state.playlists, newPlaylist];
       set({ playlists: newPlaylists });
       saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
+      return newPlaylist;
     },
 
     deletePlaylist: (id: string) => {
@@ -280,6 +281,11 @@ export const usePlayerStore = create<AppStore>()(
 
     addTrackToPlaylist: (playlistId: string, track: Track) => {
       const state = get();
+      const targetPlaylist = state.playlists.find(p => p.id === playlistId);
+      if (targetPlaylist && targetPlaylist.tracks.some(t => t.id === track.id)) {
+        return;
+      }
+
       const playlistTrack: PlaylistTrack = {
         ...track,
         addedAt: Date.now()

@@ -211,9 +211,6 @@ export function Sidebar() {
                   <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
                 </svg>
                 Favorites
-                {favorites.length > 0 && (
-                  <span className="sidebar-badge">{favorites.length}</span>
-                )}
               </button>
             </li>
           </ul>
@@ -245,7 +242,7 @@ export function Sidebar() {
                 autoFocus
               />
               <div className="sidebar-form-actions">
-                <button type="submit" className="btn btn-primary btn-sm">
+                <button type="submit" className="btn btn-primary btn-sm" disabled={!newPlaylistName.trim()}>
                   Create
                 </button>
                 <button

@@ -26,7 +26,7 @@ interface TrackItemModernProps {
   onMouseEnter: (id: string) => void;
   onToggleMenu: (id: string) => void;
   onAddToPlaylist: (playlistId: string, track: Track) => void;
-  onCreatePlaylist: () => void;
+  onCreatePlaylist: (track?: Track) => void;
   onShowCreatePlaylist: (show: boolean) => void;
   onNewPlaylistNameChange: (name: string) => void;
   isTrackInPlaylist: (track: Track, playlistId: string) => boolean;
@@ -62,7 +62,7 @@ export const TrackItemModern = memo(function TrackItemModern({
 }: TrackItemModernProps & { hovered?: boolean }) {
   return (
     <div
-      className={`track-item-modern ${isCurrent ? 'active' : ''} ${isBlurred ? 'blurred' : ''} ${isRemoving ? 'removing' : ''}`}
+      className={`track-item-modern ${isCurrent ? 'active' : ''} ${isBlurred ? 'blurred' : ''} ${isRemoving ? 'removing' : ''} ${showPlaylistMenu ? 'menu-open' : ''}`}
       onClick={() => onPlay(track, index)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -164,8 +164,9 @@ export const TrackItemModern = memo(function TrackItemModern({
                 e.stopPropagation();
                 onToggleMenu(track.id);
               }}
-              className="icon-button"
+              className={`icon-button playlist-add-trigger ${showPlaylistMenu ? 'active' : ''}`}
               aria-label="Add to playlist"
+              title="Add to playlist"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <line x1="12" y1="5" x2="12" y2="19" />
@@ -180,26 +181,56 @@ export const TrackItemModern = memo(function TrackItemModern({
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="playlist-dropdown-header-modern">
-                  <h5>Add to Playlist</h5>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="8" y1="6" x2="21" y2="6" />
+                    <line x1="8" y1="12" x2="21" y2="12" />
+                    <line x1="8" y1="18" x2="21" y2="18" />
+                    <line x1="3" y1="6" x2="3.01" y2="6" />
+                    <line x1="3" y1="12" x2="3.01" y2="12" />
+                    <line x1="3" y1="18" x2="3.01" y2="18" />
+                  </svg>
+                  <span>Add to Playlist</span>
                 </div>
 
                 <div className="playlist-dropdown-list-modern">
-                  {playlists.map((playlist) => {
-                    const inPlaylist = isTrackInPlaylist(track, playlist.id);
-                    const isAdding = addingToPlaylist === playlist.id;
+                  {playlists.length === 0 ? (
+                    <div className="playlist-dropdown-empty-modern">
+                      No playlists created yet
+                    </div>
+                  ) : (
+                    playlists.map((playlist) => {
+                      const inPlaylist = isTrackInPlaylist(track, playlist.id);
+                      const isAdding = addingToPlaylist === playlist.id;
 
-                    return (
-                      <button
-                        key={playlist.id}
-                        onClick={() => onAddToPlaylist(playlist.id, track)}
-                        className={`playlist-dropdown-item-modern ${inPlaylist ? 'added' : ''}`}
-                        disabled={inPlaylist || isAdding}
-                      >
-                        <span>{playlist.name}</span>
-                        {inPlaylist && <span className="added-badge-modern">Added</span>}
-                      </button>
-                    );
-                  })}
+                      return (
+                        <button
+                          key={playlist.id}
+                          onClick={() => onAddToPlaylist(playlist.id, track)}
+                          className={`playlist-dropdown-item-modern ${inPlaylist ? 'added' : ''}`}
+                          disabled={inPlaylist || isAdding}
+                        >
+                          <div className="playlist-item-left">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M9 18V5l12-2v13" />
+                              <circle cx="6" cy="18" r="3" />
+                              <circle cx="18" cy="16" r="3" />
+                            </svg>
+                            <span className="playlist-name-text">{playlist.name}</span>
+                          </div>
+                          {inPlaylist ? (
+                            <span className="added-badge-modern">
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                              Added
+                            </span>
+                          ) : (
+                            <span className="add-plus-badge">+</span>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
 
                 <div className="playlist-dropdown-footer-modern">
@@ -208,30 +239,45 @@ export const TrackItemModern = memo(function TrackItemModern({
                       onClick={() => onShowCreatePlaylist(true)}
                       className="create-playlist-btn-modern"
                     >
-                      + Create Playlist
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                      Create Playlist
                     </button>
                   ) : (
-                    <div className="create-playlist-form-modern">
+                    <form 
+                      className="create-playlist-form-modern" 
+                      onSubmit={(e) => { 
+                        e.preventDefault(); 
+                        onCreatePlaylist(track); 
+                      }}
+                    >
                       <input
                         type="text"
                         value={newPlaylistName}
                         onChange={(e) => onNewPlaylistNameChange(e.target.value)}
-                        placeholder="Playlist name"
+                        placeholder="Playlist name..."
                         className="create-playlist-input-modern"
                         autoFocus
                       />
                       <div className="create-playlist-actions-modern">
-                        <button onClick={onCreatePlaylist} className="btn-save-modern">
+                        <button 
+                          type="submit" 
+                          className="btn-save-modern" 
+                          disabled={!newPlaylistName.trim()}
+                        >
                           Save
                         </button>
                         <button
+                          type="button"
                           onClick={() => onShowCreatePlaylist(false)}
                           className="btn-cancel-modern"
                         >
                           Cancel
                         </button>
                       </div>
-                    </div>
+                    </form>
                   )}
                 </div>
               </div>

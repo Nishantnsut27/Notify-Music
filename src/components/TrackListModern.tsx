@@ -122,16 +122,26 @@ export function TrackListModern({
     }, 500);
   };
 
-  const handleCreatePlaylist = () => {
+  const handleCreatePlaylist = (track?: Track) => {
     if (newPlaylistName.trim()) {
-      createPlaylist(newPlaylistName.trim());
-      addToast({
-        type: 'success',
-        title: 'Playlist Created',
-        message: `Created "${newPlaylistName.trim()}"`,
-      });
+      const created = createPlaylist(newPlaylistName.trim());
+      if (track && created) {
+        addTrackToPlaylist(created.id, track);
+        addToast({
+          type: 'success',
+          title: 'Playlist Created & Song Added',
+          message: `Created "${created.name}" and added "${track.name}"`,
+        });
+      } else {
+        addToast({
+          type: 'success',
+          title: 'Playlist Created',
+          message: `Created "${newPlaylistName.trim()}"`,
+        });
+      }
       setNewPlaylistName('');
       setShowCreatePlaylist(false);
+      setShowPlaylistMenu(null);
     }
   };
 
