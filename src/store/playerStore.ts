@@ -105,6 +105,33 @@ const areTracksIdentical = (tracksA: PlaylistTrack[] | Track[], tracksB: Playlis
   return idsA === idsB;
 };
 
+const DEFAULT_PLAYLISTS: Playlist[] = [
+  {
+    id: 'default-playlist-1',
+    name: 'Top Hits',
+    tracks: [
+      {
+        id: 'demo-track-1',
+        name: 'Midnight Groove',
+        artist_name: 'Chill Lounge',
+        artist_id: 'artist-1',
+        album_name: 'Lo-Fi Sessions',
+        album_id: 'album-1',
+        album_image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300',
+        image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300',
+        audio: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3',
+        audiodownload: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3',
+        duration: 145,
+        license_ccurl: '',
+        musicinfo: { tags: { genres: ['Lofi', 'Chill'], instruments: [], vartags: [] } },
+        addedAt: Date.now()
+      }
+    ],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  }
+];
+
 export const usePlayerStore = create<AppStore>()(
   subscribeWithSelector((set, get) => ({
     currentTrack: null,
@@ -124,7 +151,7 @@ export const usePlayerStore = create<AppStore>()(
     error: null,
     trending: [],
 
-    playlists: loadFromLocalStorage(STORAGE_KEYS.PLAYLISTS, []),
+    playlists: loadFromLocalStorage(STORAGE_KEYS.PLAYLISTS, DEFAULT_PLAYLISTS),
     favorites: loadFromLocalStorage(STORAGE_KEYS.FAVORITES, []),
 
     isSidebarOpen: false,
@@ -141,7 +168,8 @@ export const usePlayerStore = create<AppStore>()(
         isPlaying: true,
         queue: newQueue,
         currentIndex: newIndex >= 0 ? newIndex : 0,
-        currentTime: 0
+        currentTime: 0,
+        duration: track.duration || 0
       });
     },
 
@@ -169,7 +197,9 @@ export const usePlayerStore = create<AppStore>()(
         set({
           currentTrack: nextTrack,
           currentIndex: nextIndex,
-          currentTime: 0
+          currentTime: 0,
+          duration: nextTrack.duration || 0,
+          isPlaying: true
         });
       }
     },
@@ -193,7 +223,9 @@ export const usePlayerStore = create<AppStore>()(
         set({
           currentTrack: prevTrack,
           currentIndex: prevIndex,
-          currentTime: 0
+          currentTime: 0,
+          duration: prevTrack.duration || 0,
+          isPlaying: true
         });
       }
     },
@@ -203,8 +235,9 @@ export const usePlayerStore = create<AppStore>()(
     setIsPlaying: (playing: boolean) => set({ isPlaying: playing }),
     
     setVolume: (volume: number) => {
-      set({ volume });
-      saveToLocalStorage('player-volume', volume);
+      const clamped = Math.max(0, Math.min(100, volume));
+      set({ volume: clamped, isMuted: clamped === 0 });
+      saveToLocalStorage(STORAGE_KEYS.VOLUME, clamped);
     },
     
     toggleMute: () => set((state) => ({ isMuted: !state.isMuted })),

@@ -3,9 +3,18 @@ import { API_ENDPOINTS, PLAYER_DEFAULTS } from '../config/constants';
 import { fetchJson, type ApiResponse } from './apiClient';
 import { formatDuration, getTrackUrl, getArtistUrl } from '../utils/formatters';
 
+const searchCache = new Map<string, { timestamp: number; tracks: Track[] }>();
+const CACHE_TTL_MS = 300000;
+
 export class MusicAPI {
   static async searchTracks(query: string, limit = PLAYER_DEFAULTS.DEFAULT_SEARCH_LIMIT): Promise<Track[]> {
     if (!query || !query.trim()) return [];
+
+    const cacheKey = `${query.trim().toLowerCase()}:${limit}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return cached.tracks;
+    }
 
     try {
       const url = `${API_ENDPOINTS.SEARCH}?q=${encodeURIComponent(query.trim())}&limit=${limit}`;
@@ -19,6 +28,7 @@ export class MusicAPI {
         throw new Error(`No music found for "${query}". Try searching for genres like rap, pop, electronic, or jazz.`);
       }
 
+      searchCache.set(cacheKey, { timestamp: Date.now(), tracks: body.data });
       return body.data;
     } catch (error) {
       console.error('[MusicAPI] Search error:', error);

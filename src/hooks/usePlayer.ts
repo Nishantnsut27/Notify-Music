@@ -9,8 +9,24 @@ let listenersAttached = false;
 
 export function getAudio(): HTMLAudioElement {
   if (!singletonAudio) {
-    singletonAudio = new Audio();
-    singletonAudio.preload = 'metadata';
+    if (typeof document !== 'undefined') {
+      const existing = document.getElementById('music-player-audio') as HTMLAudioElement;
+      if (existing) {
+        singletonAudio = existing;
+      } else {
+        singletonAudio = document.createElement('audio');
+        singletonAudio.id = 'music-player-audio';
+        singletonAudio.className = 'global-audio-player';
+        singletonAudio.preload = 'metadata';
+        if (document.body) {
+          document.body.appendChild(singletonAudio);
+        }
+      }
+    } else {
+      singletonAudio = new Audio();
+    }
+  } else if (typeof document !== 'undefined' && document.body && !document.body.contains(singletonAudio)) {
+    document.body.appendChild(singletonAudio);
   }
   return singletonAudio;
 }
@@ -22,7 +38,7 @@ export function seekAudio(targetTime: number) {
 
   const maxDuration = audio.duration && !isNaN(audio.duration) && audio.duration > 0 
     ? audio.duration 
-    : state.duration || 0;
+    : (state.duration || state.currentTrack.duration || 0);
     
   let clampedTime = Math.max(0, targetTime);
   if (maxDuration > 0) {
@@ -52,8 +68,6 @@ export function usePlayer() {
     currentIndex,
     isShuffling,
     repeatMode,
-    setCurrentTime,
-    setDuration,
     setIsPlaying,
     playTrack,
     pauseTrack,
@@ -70,13 +84,13 @@ export function usePlayer() {
 
     const handleTimeUpdate = () => {
       if (singletonAudio) {
-        setCurrentTime(singletonAudio.currentTime);
+        usePlayerStore.getState().setCurrentTime(singletonAudio.currentTime);
       }
     };
 
     const handleLoadedMetadata = () => {
-      if (singletonAudio) {
-        setDuration(singletonAudio.duration);
+      if (singletonAudio && singletonAudio.duration && !isNaN(singletonAudio.duration)) {
+        usePlayerStore.getState().setDuration(singletonAudio.duration);
       }
     };
 
@@ -115,10 +129,6 @@ export function usePlayer() {
     singletonAudio!.addEventListener('ended', handleEnded);
     singletonAudio!.addEventListener('error', handleError);
     singletonAudio!.addEventListener('canplay', handleCanPlay);
-
-    // No cleanup: singleton Audio listeners persist for the app lifetime.
-    // Removing them on one component's unmount would break the other caller.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Sync track changes → same singleton Audio ────────────────────
@@ -159,6 +169,9 @@ export function usePlayer() {
         playTrack(track);
       } else {
         setIsPlaying(true);
+      }
+      if (singletonAudio) {
+        singletonAudio.play().catch(console.error);
       }
     },
     [playTrack, setIsPlaying],

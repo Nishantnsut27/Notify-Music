@@ -72,9 +72,13 @@ export function PlayerControls() {
   const isDraggingProgress = useRef(false);
   const isDraggingVolume = useRef(false);
 
-  const progress = duration > 0 && !isNaN(duration) && !isNaN(currentTime) ? 
-    Math.max(0, Math.min(100, (currentTime / duration) * 100)) : 0;
-  const volumePercent = volume;
+  const effectiveDuration = (duration && !isNaN(duration) && duration > 0)
+    ? duration
+    : (currentTrack?.duration || 0);
+
+  const progress = effectiveDuration > 0 && !isNaN(currentTime) ? 
+    Math.max(0, Math.min(100, (currentTime / effectiveDuration) * 100)) : 0;
+  const volumePercent = isMuted ? 0 : volume;
 
   const isFavorite = currentTrack ? favorites.some(f => f.id === currentTrack.id) : false;
 
@@ -98,25 +102,25 @@ export function PlayerControls() {
   }, [isMobile]);
 
   const updateProgressFromPointer = useCallback((e: React.PointerEvent | PointerEvent) => {
-    if (!progressRef.current || duration === 0 || !currentTrack) return;
+    if (!progressRef.current || effectiveDuration === 0 || !currentTrack) return;
     const rect = progressRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const percent = Math.max(0, Math.min(1, clickX / rect.width));
-    const newTime = percent * duration;
+    const newTime = percent * effectiveDuration;
     seek(newTime);
     setHoverProgress(percent * 100);
-  }, [duration, seek, currentTrack]);
+  }, [effectiveDuration, seek, currentTrack]);
 
   const handleProgressPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (!currentTrack || duration === 0) return;
+    if (!currentTrack || effectiveDuration === 0) return;
     isDraggingProgress.current = true;
     e.currentTarget.setPointerCapture(e.pointerId);
     updateProgressFromPointer(e);
-  }, [currentTrack, duration, updateProgressFromPointer]);
+  }, [currentTrack, effectiveDuration, updateProgressFromPointer]);
 
   const handleProgressPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!progressRef.current || duration === 0) return;
+    if (!progressRef.current || effectiveDuration === 0) return;
     const rect = progressRef.current.getBoundingClientRect();
     const hoverX = e.clientX - rect.left;
     const percent = Math.max(0, Math.min(100, (hoverX / rect.width) * 100));
@@ -124,7 +128,7 @@ export function PlayerControls() {
     if (isDraggingProgress.current) {
       updateProgressFromPointer(e);
     }
-  }, [duration, updateProgressFromPointer]);
+  }, [effectiveDuration, updateProgressFromPointer]);
 
   const handleProgressPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (isDraggingProgress.current) {
@@ -281,9 +285,9 @@ export function PlayerControls() {
         aria-valuemax={100}
         tabIndex={0}
         onKeyDown={(e) => {
-          if (!currentTrack || duration === 0) return;
+          if (!currentTrack || effectiveDuration === 0) return;
           if (e.key === 'ArrowRight') {
-            seek(Math.min(duration, currentTime + 5));
+            seek(Math.min(effectiveDuration, currentTime + 5));
           } else if (e.key === 'ArrowLeft') {
             seek(Math.max(0, currentTime - 5));
           }
@@ -450,7 +454,7 @@ export function PlayerControls() {
       </div>
 
       <div className="timetext time_now">{formatDuration(currentTime)}</div>
-      <div className="timetext time_full">{formatDuration(duration)}</div>
+      <div className="timetext time_full">{formatDuration(effectiveDuration)}</div>
     </div>
   );
 }

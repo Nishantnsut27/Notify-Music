@@ -4,6 +4,7 @@ interface ErrorDisplayProps {
   title?: string;
   message?: string;
   onRetry?: () => void;
+  onDismiss?: () => void;
   className?: string;
 }
 
@@ -11,6 +12,7 @@ export function ErrorDisplay({
   title = "Playback or Connection Error",
   message = "We encountered a problem loading music. Please check your connection and try again.",
   onRetry,
+  onDismiss,
   className = "",
 }: ErrorDisplayProps) {
   const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? window.navigator.onLine : true);
@@ -58,15 +60,22 @@ export function ErrorDisplay({
       <h3 className="error-display-title">{displayTitle}</h3>
       <p className="error-display-message">{displayMessage}</p>
 
-      {onRetry && (
-        <button onClick={onRetry} className="btn btn-primary error-retry-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <polyline points="23,4 23,10 17,10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
-          Try Again
-        </button>
-      )}
+      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '12px' }}>
+        {onRetry && (
+          <button onClick={onRetry} className="btn btn-primary error-retry-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="23,4 23,10 17,10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+            Try Again
+          </button>
+        )}
+        {onDismiss && (
+          <button onClick={onDismiss} className="btn btn-ghost" style={{ padding: '6px 16px' }}>
+            Dismiss
+          </button>
+        )}
+      </div>
     </div>
   );
 }

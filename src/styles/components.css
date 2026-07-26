@@ -1517,9 +1517,7 @@
   }
 }
 
-/* ==========================================================================
-   Playlist Mobile Action Sheet Component
-   ========================================================================== */
+
 
 .playlist-mobile-actions-overlay {
   position: fixed;
@@ -1695,4 +1693,4 @@
 .playlist-mobile-sheet-cancel:hover {
   background: rgba(255, 255, 255, 0.16);
 }
-
+

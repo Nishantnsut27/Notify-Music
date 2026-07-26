@@ -16,7 +16,7 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
-export async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+export async function fetchJson<T>(url: string, options?: RequestInit, retries = 2, delay = 300): Promise<T> {
   try {
     const response = await fetch(url, {
       headers: {
@@ -27,13 +27,26 @@ export async function fetchJson<T>(url: string, options?: RequestInit): Promise<
     });
 
     if (!response.ok) {
-      throw new ApiError(`HTTP error status ${response.status}`, response.status);
+      if (retries > 0 && (response.status === 429 || response.status >= 500)) {
+        await new Promise(res => setTimeout(res, delay));
+        return fetchJson<T>(url, options, retries - 1, delay * 2);
+      }
+      throw new ApiError(
+        response.status === 429
+          ? 'Music search is temporarily busy. Please wait a moment or click retry.'
+          : `HTTP error status ${response.status}`,
+        response.status
+      );
     }
 
     return (await response.json()) as T;
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
+    }
+    if (retries > 0) {
+      await new Promise(res => setTimeout(res, delay));
+      return fetchJson<T>(url, options, retries - 1, delay * 2);
     }
     throw new ApiError(error instanceof Error ? error.message : 'Network request failed', 0);
   }

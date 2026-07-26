@@ -7,6 +7,7 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { PlaylistMenu } from './components/PlaylistMenu';
 import { ToastContainer } from './components/ToastContainer';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ErrorDisplay } from './components/ErrorDisplay';
 import { EmptyFavorites, EmptyPlaylists } from './components/EmptyState';
 import { usePlayerStore } from './store/playerStore';
 import { useToastStore } from './store/toastStore';
@@ -48,6 +49,34 @@ function App() {
   } = usePlayerStore();
 
   useKeyboardShortcuts();
+
+  useEffect(() => {
+    const handleUrlRouting = () => {
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('/favorites')) {
+        usePlayerStore.getState().setCurrentView('favorites');
+      } else if (path.includes('/playlists')) {
+        usePlayerStore.getState().setCurrentView('playlists');
+      } else if (path === '/' || path.includes('/search')) {
+        usePlayerStore.getState().setCurrentView('search');
+      }
+    };
+
+    handleUrlRouting();
+    window.addEventListener('popstate', handleUrlRouting);
+    return () => window.removeEventListener('popstate', handleUrlRouting);
+  }, []);
+
+  useEffect(() => {
+    const targetPath = currentView === 'search' ? '/' : `/${currentView}`;
+    if (window.location.pathname !== targetPath) {
+      try {
+        window.history.pushState(null, '', targetPath);
+      } catch (e) {
+        void e;
+      }
+    }
+  }, [currentView]);
 
   const handleEditPlaylist = (playlistId: string, currentName: string) => {
     setPlaylistToRename({ id: playlistId, name: currentName });
@@ -194,6 +223,29 @@ function App() {
             <div className="content-search-container">
               <SearchBar />
             </div>
+            {error && (
+              <div style={{ margin: '16px 0' }}>
+                <ErrorDisplay 
+                  message={error} 
+                  onRetry={() => {
+                    setError(null);
+                    const q = usePlayerStore.getState().query;
+                    if (q) {
+                      setLoading(true);
+                      MusicAPI.searchTracks(q)
+                        .then(res => {
+                          usePlayerStore.getState().setResults(res);
+                        })
+                        .catch(err => {
+                          setError(err instanceof Error ? err.message : 'Search failed. Please try again.');
+                        })
+                        .finally(() => setLoading(false));
+                    }
+                  }}
+                  onDismiss={() => setError(null)}
+                />
+              </div>
+            )}
             {results.length > 0 ? (
               <div>
                 <TrackListModern

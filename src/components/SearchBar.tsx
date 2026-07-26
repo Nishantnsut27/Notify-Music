@@ -56,6 +56,9 @@ export function SearchBar() {
     e.preventDefault();
     if (query.trim()) {
       performSearch(query);
+    } else {
+      setError("Please enter a song name, artist, or genre to search.");
+      clearResults();
     }
   };
 

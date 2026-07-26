@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { Track } from '../types/types';
 import { usePlayerStore } from '../store/playerStore';
 import { useToastStore } from '../store/toastStore';
+import { getAudio } from '../hooks/usePlayer';
 import { ConfirmModal } from './ConfirmModal';
 import { SkeletonTrackList } from './Skeletons';
 import { EmptySearchResults, EmptyState } from './EmptyState';
@@ -59,6 +60,14 @@ export function TrackListModern({
       }
     } else {
       playTrack(track, tracks, index);
+      try {
+        const audio = getAudio();
+        if (audio) {
+          audio.play().catch(console.error);
+        }
+      } catch (e) {
+        console.warn('Audio play trigger warning:', e);
+      }
     }
   };
 
