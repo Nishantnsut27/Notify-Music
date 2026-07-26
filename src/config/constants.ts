@@ -1,4 +1,5 @@
-export const API_BASE_URL = 'https://notify-music-player.onrender.com/api/music';
+export const BACKEND_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
+export const API_BASE_URL = `${BACKEND_URL}/api/music`;
 
 export const API_ENDPOINTS = {
   SEARCH: `${API_BASE_URL}/search`,
@@ -18,6 +19,8 @@ export const VIEWS = {
   SEARCH: 'search',
   PLAYLISTS: 'playlists',
   FAVORITES: 'favorites',
+  RECENTLY_PLAYED: 'recently-played',
+  HISTORY: 'history',
 } as const;
 
 export type ViewType = (typeof VIEWS)[keyof typeof VIEWS];

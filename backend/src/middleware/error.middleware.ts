@@ -1,10 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 
-export function errorHandlerMiddleware(err: Error, _req: Request, res: Response, _next: NextFunction): void {
-  console.error('[BackendServerError]', err.name, err.message);
+export function errorHandlerMiddleware(err: any, _req: Request, res: Response, _next: NextFunction): void {
+  console.error('[BackendServerError]', err.name || 'Error', err.message || err);
 
-  res.status(500).json({
+  const statusCode = err.statusCode || err.status || 500;
+  const errorMessage = err.message || 'An internal server error occurred while processing your request.';
+
+  res.status(statusCode).json({
     success: false,
-    error: 'An internal server error occurred while processing your request.'
+    error: errorMessage,
   });
 }

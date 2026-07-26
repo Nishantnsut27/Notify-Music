@@ -7,6 +7,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { SkeletonTrackList } from './Skeletons';
 import { EmptySearchResults, EmptyState } from './EmptyState';
 import { ErrorDisplay } from './ErrorDisplay';
+import { useAuthStore } from '../store/authStore';
 import { TrackItemModern } from './TrackItemModern';
 
 interface TrackListProps {
@@ -34,8 +35,8 @@ export function TrackListModern({
   const [removingFromPlaylist, setRemovingFromPlaylist] = useState<string | null>(null);
   const [trackToRemove, setTrackToRemove] = useState<Track | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const addToast = useToastStore(state => state.addToast);
-  
+  const addToast = useToastStore((state) => state.addToast);
+  const { isAuthenticated } = useAuthStore();
   const { 
     playTrack, 
     pauseTrack,
@@ -261,42 +262,86 @@ export function TrackListModern({
     <div className="modern-track-list">
       {title && <h2 className="track-list-title-modern">{title}</h2>}
       
-      <div 
-        className={`track-list-container-modern ${hoveredTrack ? 'has-hovered-track' : ''}`}
-        onMouseLeave={() => setHoveredTrack(null)}
-      >
-        {tracks.map((track, index) => (
-          <TrackItemModern
-            key={track.id}
-            track={track}
-            index={index}
-            isCurrent={isCurrentTrack(track)}
-            isPlaying={isPlaying}
-            isFavorite={isFavorite(track)}
-            isHovered={hoveredTrack === track.id}
-            isBlurred={!!hoveredTrack && hoveredTrack !== track.id}
-            isRemoving={removingFromPlaylist === track.id}
-            showAddToPlaylist={showAddToPlaylist}
-            playlistId={playlistId}
-            showPlaylistMenu={showPlaylistMenu === track.id}
-            playlists={playlists}
-            addingToPlaylist={addingToPlaylist}
-            newPlaylistName={newPlaylistName}
-            showCreatePlaylist={showCreatePlaylist}
-            menuRef={menuRef}
-            onPlay={handlePlayTrack}
-            onToggleFavorite={handleToggleFavorite}
-            onRemoveFromPlaylist={handleRemoveFromPlaylist}
-            onMouseEnter={setHoveredTrack}
-            onToggleMenu={(id) => setShowPlaylistMenu(showPlaylistMenu === id ? null : id)}
-            onAddToPlaylist={handleAddToPlaylist}
-            onCreatePlaylist={handleCreatePlaylist}
-            onShowCreatePlaylist={setShowCreatePlaylist}
-            onNewPlaylistNameChange={setNewPlaylistName}
-            isTrackInPlaylist={isTrackInPlaylist}
-          />
-        ))}
-      </div>
+      {!isAuthenticated ? (
+        <div className="guest-cards-grid">
+          {tracks.map((track, index) => {
+            const isCurrent = isCurrentTrack(track);
+            return (
+              <div
+                key={track.id}
+                className={`guest-music-card ${isCurrent ? 'active' : ''}`}
+                onClick={() => handlePlayTrack(track, index)}
+              >
+                <div className="guest-card-cover-wrapper">
+                  <img
+                    src={track.image || track.album_image || '/Favicon.png'}
+                    alt={track.name}
+                    className="guest-card-cover-img"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/Favicon.png';
+                    }}
+                  />
+                  <div className="guest-card-play-overlay">
+                    <button className="guest-card-play-btn" title="Play">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        {isCurrent && isPlaying ? (
+                          <>
+                            <rect x="6" y="4" width="4" height="16" />
+                            <rect x="14" y="4" width="4" height="16" />
+                          </>
+                        ) : (
+                          <polygon points="5 3 19 12 5 21 5 3" />
+                        )}
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div className="guest-card-info">
+                  <h4 className="guest-card-title truncate">{track.name}</h4>
+                  <p className="guest-card-artist truncate">{track.artist_name}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div 
+          className={`track-list-container-modern ${hoveredTrack ? 'has-hovered-track' : ''}`}
+          onMouseLeave={() => setHoveredTrack(null)}
+        >
+          {tracks.map((track, index) => (
+            <TrackItemModern
+              key={track.id}
+              track={track}
+              index={index}
+              isCurrent={isCurrentTrack(track)}
+              isPlaying={isPlaying}
+              isFavorite={isFavorite(track)}
+              isHovered={hoveredTrack === track.id}
+              isBlurred={!!hoveredTrack && hoveredTrack !== track.id}
+              isRemoving={removingFromPlaylist === track.id}
+              showAddToPlaylist={showAddToPlaylist}
+              playlistId={playlistId}
+              showPlaylistMenu={showPlaylistMenu === track.id}
+              playlists={playlists}
+              addingToPlaylist={addingToPlaylist}
+              newPlaylistName={newPlaylistName}
+              showCreatePlaylist={showCreatePlaylist}
+              menuRef={menuRef}
+              onPlay={handlePlayTrack}
+              onToggleFavorite={handleToggleFavorite}
+              onRemoveFromPlaylist={handleRemoveFromPlaylist}
+              onMouseEnter={setHoveredTrack}
+              onToggleMenu={(id) => setShowPlaylistMenu(showPlaylistMenu === id ? null : id)}
+              onAddToPlaylist={handleAddToPlaylist}
+              onCreatePlaylist={handleCreatePlaylist}
+              onShowCreatePlaylist={setShowCreatePlaylist}
+              onNewPlaylistNameChange={setNewPlaylistName}
+              isTrackInPlaylist={isTrackInPlaylist}
+            />
+          ))}
+        </div>
+      )}
 
       {trackToRemove && (
         <ConfirmModal

@@ -2,11 +2,18 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import { config } from './config/config.js';
+import cookieParser from 'cookie-parser';
+import { config, validateConfig } from './config/config.js';
+import { connectDatabase, getDatabaseState } from './config/database.js';
 import { musicRouter } from './routes/musicRoutes.js';
+import { authRouter } from './routes/authRoutes.js';
+import { userRouter } from './routes/userRoutes.js';
 import { healthLimiter } from './middleware/rateLimit.middleware.js';
 import { botProtectionMiddleware } from './middleware/security.middleware.js';
 import { errorHandlerMiddleware } from './middleware/error.middleware.js';
+
+// Validate required environment variables on startup
+validateConfig();
 
 const app = express();
 
@@ -17,31 +24,58 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 
-app.use(cors({
+const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    if (!origin || config.allowedOrigins.includes('*') || config.allowedOrigins.includes(origin)) {
+    if (!origin) return callback(null, true);
+
+    const isAllowed =
+      config.allowedOrigins.includes('*') ||
+      config.allowedOrigins.includes(origin) ||
+      (config.nodeEnv === 'development' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
+
+    if (isAllowed) {
       callback(null, true);
     } else {
-      callback(new Error('Blocked by CORS policy.'));
+      console.warn(`⚠️ [CORS] Blocked request from origin: ${origin}`);
+      callback(null, false);
     }
   },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 app.use(compression());
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(cookieParser(config.cookieSecret));
 app.use(botProtectionMiddleware);
 
+// Health check endpoint reporting server & database connection status
 app.get('/health', healthLimiter, (_req, res) => {
-  res.status(200).json({
-    status: 'ok',
+  const dbState = getDatabaseState();
+  const isOk = dbState.connected;
+
+  res.status(isOk ? 200 : 503).json({
+    status: isOk ? 'ok' : 'degraded',
     service: 'Notify Music Player Backend',
+    database: {
+      status: dbState.state,
+      connected: dbState.connected,
+      name: dbState.dbName,
+    },
+    environment: config.nodeEnv,
+    uptimeSeconds: Math.floor(process.uptime()),
     timestamp: new Date().toISOString()
   });
 });
 
+// API Routes
+app.use('/api/auth', authRouter);
+app.use('/api/user', userRouter);
 app.use('/api/music', musicRouter);
 
 app.use((_req, res) => {
@@ -53,8 +87,19 @@ app.use((_req, res) => {
 
 app.use(errorHandlerMiddleware);
 
-app.listen(config.port, () => {
-  console.log(`🚀 Notify Music Player Backend running on http://localhost:${config.port}`);
-});
+// Initialize database connection before listening for HTTP requests
+const startServer = async () => {
+  try {
+    await connectDatabase();
+    app.listen(config.port, () => {
+      console.log(`🚀 Notify Music Player Backend running on http://localhost:${config.port}`);
+    });
+  } catch (err) {
+    console.error('💥 Fatal Startup Failure:', err);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 export default app;

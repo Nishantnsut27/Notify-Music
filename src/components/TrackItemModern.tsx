@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import type { Track } from '../types/types';
 import { formatDuration, getArtistUrl } from '../utils/formatters';
 import { AudioVisualizer } from './AudioVisualizer';
+import { useAuthStore } from '../store/authStore';
 
 interface TrackItemModernProps {
   track: Track;
@@ -60,6 +61,7 @@ export const TrackItemModern = memo(function TrackItemModern({
   onNewPlaylistNameChange,
   isTrackInPlaylist,
 }: TrackItemModernProps & { hovered?: boolean }) {
+  const { isAuthenticated } = useAuthStore();
   return (
     <div
       className={`track-item-modern ${isCurrent ? 'active' : ''} ${isBlurred ? 'blurred' : ''} ${isRemoving ? 'removing' : ''} ${showPlaylistMenu ? 'menu-open' : ''}`}
@@ -121,27 +123,29 @@ export const TrackItemModern = memo(function TrackItemModern({
       </div>
 
       <div className="track-actions-modern">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleFavorite(track);
-          }}
-          className={`icon-button ${isFavorite ? 'active' : ''}`}
-          aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill={isFavorite ? '#e22134' : 'none'}
-            stroke={isFavorite ? '#e22134' : 'currentColor'}
-            strokeWidth="2"
+        {isAuthenticated && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite(track);
+            }}
+            className={`icon-button ${isFavorite ? 'active' : ''}`}
+            aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
           >
-            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-          </svg>
-        </button>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill={isFavorite ? '#e22134' : 'none'}
+              stroke={isFavorite ? '#e22134' : 'currentColor'}
+              strokeWidth="2"
+            >
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+            </svg>
+          </button>
+        )}
 
-        {playlistId && (
+        {playlistId && isAuthenticated && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -157,7 +161,7 @@ export const TrackItemModern = memo(function TrackItemModern({
           </button>
         )}
 
-        {showAddToPlaylist && (
+        {showAddToPlaylist && isAuthenticated && (
           <div className="playlist-menu-container-modern">
             <button
               onClick={(e) => {

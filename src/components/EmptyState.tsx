@@ -26,7 +26,7 @@ export function EmptyState({
       {icon && <div className="empty-state-icon-wrapper">{icon}</div>}
       <h3 className="empty-state-title">{title}</h3>
       <p className="empty-state-description">{description}</p>
-      
+
       {(actionText || secondaryActionText) && (
         <div className="empty-state-actions">
           {actionText && onAction && (
@@ -57,7 +57,7 @@ export function EmptySearchResults({ onClear }: { onClear?: () => void }) {
       }
       title="No songs or artists found"
       description="Try searching for popular artists, song titles, or genres like rap, electronic, jazz, or pop."
-      actionText={onClear ? "Clear Search" : undefined}
+      actionText={onClear ? 'Clear Search' : undefined}
       onAction={onClear}
     />
   );
@@ -73,7 +73,7 @@ export function EmptyFavorites({ onBrowse }: { onBrowse?: () => void }) {
       }
       title="Your favorites list is empty"
       description="Tap the heart icon on any track to save your favorite songs here for easy access."
-      actionText={onBrowse ? "Explore Music" : undefined}
+      actionText={onBrowse ? 'Explore Music' : undefined}
       onAction={onBrowse}
     />
   );
@@ -92,8 +92,43 @@ export function EmptyPlaylists({ onCreate }: { onCreate?: () => void }) {
       }
       title="No playlists created yet"
       description="Create playlists to organize your favorite tracks and build custom mixes."
-      actionText={onCreate ? "Create First Playlist" : undefined}
+      actionText={onCreate ? 'Create First Playlist' : undefined}
       onAction={onCreate}
+    />
+  );
+}
+
+export function EmptyRecentlyPlayed({ onBrowse }: { onBrowse?: () => void }) {
+  return (
+    <EmptyState
+      icon={
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+      }
+      title="No recently played tracks"
+      description="Start playing music to build your queue and return to your recent tracks anytime."
+      actionText={onBrowse ? 'Start Listening' : undefined}
+      onAction={onBrowse}
+    />
+  );
+}
+
+export function EmptyHistory({ onBrowse }: { onBrowse?: () => void }) {
+  return (
+    <EmptyState
+      icon={
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <line x1="18" y1="20" x2="18" y2="10" />
+          <line x1="12" y1="20" x2="12" y2="4" />
+          <line x1="6" y1="20" x2="6" y2="14" />
+        </svg>
+      }
+      title="Listening history is empty"
+      description="Your cloud listening stats and stream logs will appear here as you play songs."
+      actionText={onBrowse ? 'Explore Music' : undefined}
+      onAction={onBrowse}
     />
   );
 }

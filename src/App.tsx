@@ -8,20 +8,51 @@ import { PlaylistMenu } from './components/PlaylistMenu';
 import { ToastContainer } from './components/ToastContainer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ErrorDisplay } from './components/ErrorDisplay';
-import { EmptyFavorites, EmptyPlaylists } from './components/EmptyState';
+import { EmptyFavorites, EmptyPlaylists, EmptyRecentlyPlayed, EmptyHistory } from './components/EmptyState';
+import { PersonalizedHome } from './components/PersonalizedHome';
 import { usePlayerStore } from './store/playerStore';
 import { useToastStore } from './store/toastStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { MusicAPI } from './services/musicApi';
 import type { Playlist } from './types/types';
 
+import { UserAvatar } from './components/auth/UserAvatar';
+import { UserDropdown } from './components/auth/UserDropdown';
+import { AuthModal, type AuthMode } from './components/auth/AuthModal';
+import { useAuthStore } from './store/authStore';
+
 import './styles/variables.css';
 import './styles/layout.css';
 import './styles/components.css';
 import './styles/player.css';
 import './styles/animations.css';
+import './styles/auth.css';
 
 function App() {
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<AuthMode>('login');
+
+  const { isAuthenticated, checkAuth } = useAuthStore();
+  const { addToast } = useToastStore();
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  useEffect(() => {
+    const handleOpenAuth = (e: Event) => {
+      const customEvent = e as CustomEvent<AuthMode>;
+      if (customEvent.detail) {
+        setAuthModalMode(customEvent.detail);
+      }
+      setIsAuthModalOpen(true);
+    };
+
+    window.addEventListener('open-auth-modal', handleOpenAuth);
+    return () => window.removeEventListener('open-auth-modal', handleOpenAuth);
+  }, []);
+
   const [showPlaylistActions, setShowPlaylistActions] = useState<string | null>(null);
   const [editingPlaylist, setEditingPlaylist] = useState<string | null>(null);
   const [editPlaylistName, setEditPlaylistName] = useState('');
@@ -32,20 +63,24 @@ function App() {
 
   const {
     currentView,
+    setCurrentView,
     isSidebarOpen,
     results,
+    query,
     isLoading,
     error,
     trending,
     playlists,
     favorites,
+    recentlyPlayed,
+    listeningHistory,
     clearFavorites,
     setTrending,
     setLoading,
     setError,
     toggleSidebar,
     deletePlaylist,
-    renamePlaylist
+    renamePlaylist,
   } = usePlayerStore();
 
   useKeyboardShortcuts();
@@ -53,10 +88,32 @@ function App() {
   useEffect(() => {
     const handleUrlRouting = () => {
       const path = window.location.pathname.toLowerCase();
+      const isAuth = useAuthStore.getState().isAuthenticated;
+
+      const isProtectedRoute =
+        path.includes('/favorites') ||
+        path.includes('/playlists') ||
+        path.includes('/recently-played') ||
+        path.includes('/history');
+
+      if (!isAuth && isProtectedRoute) {
+        usePlayerStore.getState().setCurrentView('search');
+        try {
+          window.history.replaceState(null, '', '/');
+        } catch {
+          // Ignore state error
+        }
+        return;
+      }
+
       if (path.includes('/favorites')) {
         usePlayerStore.getState().setCurrentView('favorites');
       } else if (path.includes('/playlists')) {
         usePlayerStore.getState().setCurrentView('playlists');
+      } else if (path.includes('/recently-played')) {
+        usePlayerStore.getState().setCurrentView('recently-played');
+      } else if (path.includes('/history')) {
+        usePlayerStore.getState().setCurrentView('history');
       } else if (path === '/' || path.includes('/search')) {
         usePlayerStore.getState().setCurrentView('search');
       }
@@ -66,6 +123,21 @@ function App() {
     window.addEventListener('popstate', handleUrlRouting);
     return () => window.removeEventListener('popstate', handleUrlRouting);
   }, []);
+
+  // Protected Route Guard Effect: Redirect guest users attempting to view protected views
+  useEffect(() => {
+    const protectedViews = ['favorites', 'playlists', 'recently-played', 'history'];
+    if (!isAuthenticated && protectedViews.includes(currentView)) {
+      setCurrentView('search');
+      addToast({
+        type: 'info',
+        title: 'Sign In Required',
+        message: 'Please log in to access your personal library, favorites, and history.',
+      });
+      setIsAuthModalOpen(true);
+      setAuthModalMode('login');
+    }
+  }, [isAuthenticated, currentView, setCurrentView, addToast]);
 
   useEffect(() => {
     const targetPath = currentView === 'search' ? '/' : `/${currentView}`;
@@ -139,13 +211,13 @@ function App() {
   };
 
   const handleExportPlaylist = (playlistId: string) => {
-    const playlist = playlists.find(p => p.id === playlistId);
+    const playlist = playlists.find((p) => p.id === playlistId);
     if (!playlist) return;
 
     const dataStr = JSON.stringify(playlist, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
+
     const a = document.createElement('a');
     a.href = url;
     a.download = `${playlist.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_playlist.json`;
@@ -153,7 +225,7 @@ function App() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     useToastStore.getState().addToast({
       type: 'info',
       title: 'Playlist Exported',
@@ -162,7 +234,6 @@ function App() {
 
     setShowPlaylistActions(null);
   };
-
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -183,14 +254,16 @@ function App() {
         setLoading(true);
         setError(null);
         try {
-          console.log('🎵 Loading trending rap tracks...');
+          console.log('🎵 Loading trending music tracks...');
           const tracks = await MusicAPI.getTrendingTracks(25);
           setTrending(tracks);
           console.log('✅ Loaded trending tracks:', tracks.length);
         } catch (error) {
           console.error('❌ Failed to load trending tracks:', error);
-          const errorMsg = error instanceof Error ? error.message :
-            '🎪 Trending tracks are temporarily unavailable. Try searching for specific genres like rap, electronic, or jazz.';
+          const errorMsg =
+            error instanceof Error
+              ? error.message
+              : '🎪 Trending tracks are temporarily unavailable. Try searching for specific genres like rap, electronic, or jazz.';
           setError(errorMsg);
         } finally {
           setLoading(false);
@@ -218,6 +291,15 @@ function App() {
   const renderMainContent = () => {
     switch (currentView) {
       case 'search':
+        // Render Personalized Dashboard if Authenticated and not currently executing an active search query
+        if (isAuthenticated && (!query || query.trim().length === 0) && results.length === 0) {
+          return (
+            <div className="view-container">
+              <PersonalizedHome />
+            </div>
+          );
+        }
+
         return (
           <div className="view-container">
             <div className="content-search-container">
@@ -225,18 +307,18 @@ function App() {
             </div>
             {error && (
               <div style={{ margin: '16px 0' }}>
-                <ErrorDisplay 
-                  message={error} 
+                <ErrorDisplay
+                  message={error}
                   onRetry={() => {
                     setError(null);
                     const q = usePlayerStore.getState().query;
                     if (q) {
                       setLoading(true);
                       MusicAPI.searchTracks(q)
-                        .then(res => {
+                        .then((res) => {
                           usePlayerStore.getState().setResults(res);
                         })
-                        .catch(err => {
+                        .catch((err) => {
                           setError(err instanceof Error ? err.message : 'Search failed. Please try again.');
                         })
                         .finally(() => setLoading(false));
@@ -298,10 +380,7 @@ function App() {
                 }}
               />
             ) : (
-              <TrackListModern
-                tracks={favorites}
-                showAddToPlaylist={true}
-              />
+              <TrackListModern tracks={favorites} showAddToPlaylist={true} />
             )}
           </div>
         );
@@ -321,7 +400,10 @@ function App() {
             ) : (
               <div className="playlists-grid">
                 {playlists.map((playlist) => (
-                  <div key={playlist.id} className={`playlist-card ${showPlaylistActions === playlist.id ? 'menu-open' : ''}`}>
+                  <div
+                    key={playlist.id}
+                    className={`playlist-card ${showPlaylistActions === playlist.id ? 'menu-open' : ''}`}
+                  >
                     <div className="playlist-card-header">
                       <div className="playlist-card-info">
                         {editingPlaylist === playlist.id ? (
@@ -341,16 +423,10 @@ function App() {
                               autoFocus
                             />
                             <div className="playlist-edit-actions">
-                              <button
-                                onClick={handleSavePlaylistName}
-                                className="btn btn-primary btn-sm"
-                              >
+                              <button onClick={handleSavePlaylistName} className="btn btn-primary btn-sm">
                                 Save
                               </button>
-                              <button
-                                onClick={handleCancelEdit}
-                                className="btn btn-ghost btn-sm"
-                              >
+                              <button onClick={handleCancelEdit} className="btn btn-ghost btn-sm">
                                 Cancel
                               </button>
                             </div>
@@ -368,9 +444,9 @@ function App() {
                       {editingPlaylist !== playlist.id && (
                         <div className="playlist-card-actions" style={{ position: 'relative' }}>
                           <button
-                            onClick={() => setShowPlaylistActions(
-                              showPlaylistActions === playlist.id ? null : playlist.id
-                            )}
+                            onClick={() =>
+                              setShowPlaylistActions(showPlaylistActions === playlist.id ? null : playlist.id)
+                            }
                             className="btn btn-ghost btn-icon btn-sm"
                             aria-label="More options"
                           >
@@ -409,6 +485,50 @@ function App() {
           </div>
         );
 
+      case 'recently-played':
+        return (
+          <div className="view-container">
+            <div className="page-header">
+              <h1 className="page-title">Recently Played</h1>
+              <p className="page-subtitle">
+                {recentlyPlayed.length} {recentlyPlayed.length === 1 ? 'track' : 'tracks'} played recently
+              </p>
+            </div>
+
+            {recentlyPlayed.length === 0 ? (
+              <EmptyRecentlyPlayed
+                onBrowse={() => {
+                  usePlayerStore.getState().setCurrentView('search');
+                }}
+              />
+            ) : (
+              <TrackListModern tracks={recentlyPlayed} showAddToPlaylist={true} />
+            )}
+          </div>
+        );
+
+      case 'history':
+        return (
+          <div className="view-container">
+            <div className="page-header">
+              <h1 className="page-title">Listening History</h1>
+              <p className="page-subtitle">
+                {listeningHistory.length} {listeningHistory.length === 1 ? 'entry' : 'entries'} recorded in cloud
+              </p>
+            </div>
+
+            {listeningHistory.length === 0 ? (
+              <EmptyHistory
+                onBrowse={() => {
+                  usePlayerStore.getState().setCurrentView('search');
+                }}
+              />
+            ) : (
+              <TrackListModern tracks={listeningHistory} showAddToPlaylist={true} />
+            )}
+          </div>
+        );
+
       default:
         return null;
     }
@@ -432,24 +552,29 @@ function App() {
             </svg>
           </button>
 
-          <h1 className="app-title" style={{ color: '#ffffff !important' }}>Notify Music Player</h1>
+          <h1 className="app-title" style={{ color: '#ffffff !important' }}>
+            Notify Music Player
+          </h1>
 
           <div className="header-search-container">
             <SearchBar />
           </div>
 
           <div className="header-actions">
-            <a
-              href="https://github.com/Nishantnsut27"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="github-link"
-              aria-label="Visit GitHub Profile"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-              </svg>
-            </a>
+            <div style={{ position: 'relative' }}>
+              <UserAvatar
+                isOpen={isUserDropdownOpen}
+                onToggle={() => setIsUserDropdownOpen((prev) => !prev)}
+              />
+              <UserDropdown
+                isOpen={isUserDropdownOpen}
+                onClose={() => setIsUserDropdownOpen(false)}
+                onOpenAuthModal={(mode) => {
+                  setAuthModalMode(mode);
+                  setIsAuthModalOpen(true);
+                }}
+              />
+            </div>
           </div>
         </header>
 
@@ -506,6 +631,17 @@ function App() {
           onCancel={() => setShowClearFavoritesModal(false)}
         />
       )}
+
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        mode={authModalMode}
+        onClose={() => setIsAuthModalOpen(false)}
+        onModeChange={(newMode) => setAuthModalMode(newMode)}
+        onAuthSuccess={(email) => {
+          setIsAuthModalOpen(false);
+          addToast({ message: `Authenticated successfully! Welcome ${email}`, type: 'success' });
+        }}
+      />
 
       <ToastContainer />
     </div>
