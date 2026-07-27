@@ -21,6 +21,8 @@ export const VIEWS = {
   FAVORITES: 'favorites',
   RECENTLY_PLAYED: 'recently-played',
   HISTORY: 'history',
+  ARTIST_SEARCH: 'artist-search',
+  ARTIST_DETAIL: 'artist-detail',
 } as const;
 
 export type ViewType = (typeof VIEWS)[keyof typeof VIEWS];

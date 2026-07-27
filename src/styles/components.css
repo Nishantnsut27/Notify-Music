@@ -2075,9 +2075,7 @@
   width: 100%;
 }
 
-.artist-tag {
-  }
-}
+
 
 /* Guest Music Cards Grid */
 .guest-cards-grid {
@@ -2193,7 +2191,7 @@
   .guest-cards-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 0.85rem;
-  transform: translateY(-4px);
+  }
 }
 
 .artist-img-wrapper {

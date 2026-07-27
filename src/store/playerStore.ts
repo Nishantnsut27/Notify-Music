@@ -54,16 +54,28 @@ interface PlaylistStore {
 
 interface UIStore {
   isSidebarOpen: boolean;
-  currentView: 'search' | 'playlists' | 'favorites' | 'recently-played' | 'history';
+  currentView: 'search' | 'playlists' | 'favorites' | 'recently-played' | 'history' | 'artist-search' | 'artist-detail';
   theme: 'light' | 'dark';
   
   toggleSidebar: () => void;
   closeSidebar: () => void;
-  setCurrentView: (view: 'search' | 'playlists' | 'favorites' | 'recently-played' | 'history') => void;
+  setCurrentView: (view: 'search' | 'playlists' | 'favorites' | 'recently-played' | 'history' | 'artist-search' | 'artist-detail') => void;
   setTheme: (theme: 'light' | 'dark') => void;
 }
 
-type AppStore = PlayerStore & SearchStore & PlaylistStore & UIStore;
+interface ArtistStore {
+  currentArtist: any | null;
+  artistSongs: Track[];
+  artistSearchQuery: string;
+  artistSearchResults: any[];
+  
+  setCurrentArtist: (artist: any | null) => void;
+  setArtistSongs: (songs: Track[]) => void;
+  setArtistSearchQuery: (query: string) => void;
+  setArtistSearchResults: (results: any[]) => void;
+}
+
+type AppStore = PlayerStore & SearchStore & PlaylistStore & UIStore & ArtistStore;
 
 const loadFromLocalStorage = <T>(key: string, defaultValue: T): T => {
   try {
