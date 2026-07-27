@@ -13,8 +13,6 @@ export function SearchBar() {
     setError, 
     clearResults,
     setQuery: setStoreQuery,
-    currentView,
-    setCurrentView 
   } = usePlayerStore();
 
   const performSearch = useCallback(async (searchQuery: string) => {
@@ -22,10 +20,6 @@ export function SearchBar() {
     setLoading(true);
     setError(null);
     setStoreQuery(searchQuery);
-    
-    if (currentView !== 'search') {
-      setCurrentView('search');
-    }
     
     try {
       const tracks = await MusicAPI.searchTracks(searchQuery);
@@ -41,7 +35,7 @@ export function SearchBar() {
       setLoading(false);
       setIsSearching(false);
     }
-  }, [setIsSearching, setLoading, setError, setStoreQuery, currentView, setCurrentView, setResults]);
+  }, [setIsSearching, setLoading, setError, setStoreQuery, setResults]);
 
   useEffect(() => {
     if (debouncedQuery.trim()) {

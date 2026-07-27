@@ -255,7 +255,7 @@ export function TrackListModern({
             onAction={() => {
               const store = usePlayerStore.getState();
               store.clearResults();
-              store.setCurrentView('home' as any);
+              store.setCurrentView('search');
             }}
           />
         )}
