@@ -63,17 +63,6 @@ export class MusicAPI {
     }
   }
 
-  static async getTracksByArtist(artistId: string): Promise<Track[]> {
-    try {
-      const url = API_ENDPOINTS.ARTIST(artistId);
-      const body = await fetchJson<ApiResponse<{ topSongs?: Track[] }>>(url);
-      return body.success && body.data?.topSongs ? body.data.topSongs : [];
-    } catch (error) {
-      console.error('[MusicAPI] Get tracks by artist error:', error);
-      return [];
-    }
-  }
-
   static async getTracksByGenre(genre: string, limit = PLAYER_DEFAULTS.DEFAULT_SEARCH_LIMIT): Promise<Track[]> {
     return this.searchTracks(genre, limit);
   }

@@ -66,7 +66,6 @@ function App() {
     setCurrentView,
     isSidebarOpen,
     results,
-    query,
     isLoading,
     error,
     trending,

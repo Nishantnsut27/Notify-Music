@@ -5,7 +5,6 @@ export const API_ENDPOINTS = {
   SEARCH: `${API_BASE_URL}/search`,
   TRENDING: `${API_BASE_URL}/trending`,
   SONG: (id: string) => `${API_BASE_URL}/song/${encodeURIComponent(id)}`,
-  ARTIST: (id: string) => `${API_BASE_URL}/artist/${encodeURIComponent(id)}`,
 } as const;
 
 export const STORAGE_KEYS = {
@@ -21,8 +20,6 @@ export const VIEWS = {
   FAVORITES: 'favorites',
   RECENTLY_PLAYED: 'recently-played',
   HISTORY: 'history',
-  ARTIST_SEARCH: 'artist-search',
-  ARTIST_DETAIL: 'artist-detail',
 } as const;
 
 export type ViewType = (typeof VIEWS)[keyof typeof VIEWS];

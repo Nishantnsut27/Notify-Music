@@ -28,8 +28,6 @@ function getPersonalizedGreeting(): string {
 export function PersonalizedHome() {
   const { user } = useAuthStore();
   const {
-    favorites,
-    playlists,
     recentlyPlayed,
     playTrack,
     setCurrentView,
@@ -38,10 +36,7 @@ export function PersonalizedHome() {
     query,
     isLoading,
     error,
-    setQuery,
-    setResults,
     setLoading,
-    setError,
   } = usePlayerStore();
 
   const [trendingTracks, setTrendingTracks] = useState<Track[]>([]);
@@ -92,34 +87,6 @@ export function PersonalizedHome() {
 
     loadTrending();
   }, [trendingTracks.length, setLoading]);
-
-  const handlePlayFavorites = () => {
-    if (favorites.length > 0) {
-      playTrack(favorites[0], favorites);
-    }
-  };
-
-  const handlePlayPlaylist = (playlistId: string) => {
-    const playlist = playlists.find((p) => p.id === playlistId);
-    if (playlist && playlist.tracks.length > 0) {
-      playTrack(playlist.tracks[0], playlist.tracks);
-    }
-  };
-
-  const handleArtistClick = async (artistQuery: string) => {
-    setQuery(artistQuery);
-    setLoading(true);
-    setError(null);
-    setCurrentView('search');
-    try {
-      const tracks = await MusicAPI.searchTracks(artistQuery);
-      setResults(tracks);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load artist tracks.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="personalized-home">
