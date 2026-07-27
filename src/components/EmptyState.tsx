@@ -55,8 +55,8 @@ export function EmptySearchResults({ onClear }: { onClear?: () => void }) {
           <line x1="8" y1="11" x2="14" y2="11" />
         </svg>
       }
-      title="No songs or artists found"
-      description="Try searching for popular artists, song titles, or genres like rap, electronic, jazz, or pop."
+      title="This song is not available"
+      description="Try searching for another song, popular artists, or titles."
       actionText={onClear ? 'Clear Search' : undefined}
       onAction={onClear}
     />
@@ -126,7 +126,7 @@ export function EmptyHistory({ onBrowse }: { onBrowse?: () => void }) {
         </svg>
       }
       title="Listening history is empty"
-      description="Your cloud listening stats and stream logs will appear here as you play songs."
+      description="Your listening stats will appear here as you play songs."
       actionText={onBrowse ? 'Explore Music' : undefined}
       onAction={onBrowse}
     />

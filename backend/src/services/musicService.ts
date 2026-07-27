@@ -38,7 +38,24 @@ export class MusicService {
         const ytSongs: Song[] = ytResult.status === 'fulfilled' ? ytResult.value : [];
 
         const merged = [...jioSongs, ...ytSongs];
-        const deduped = deduplicateSongs(merged);
+        
+        const avoidWords = ['mashup', 'mix', 'remix', 'lofi', 'slowed', 'reverb'];
+        let filtered = merged;
+        
+        // If the query doesn't explicitly contain these terms, try to filter them out
+        const isRequestingMix = avoidWords.some(w => trimmedQuery.includes(w));
+        if (!isRequestingMix) {
+          filtered = merged.filter(song => {
+            const lowerName = song.name.toLowerCase();
+            return !avoidWords.some(w => lowerName.includes(w));
+          });
+          // Fallback if filtering removes everything
+          if (filtered.length === 0 && merged.length > 0) {
+            filtered = merged;
+          }
+        }
+
+        const deduped = deduplicateSongs(filtered);
         const ranked = rankSongs(deduped, trimmedQuery);
 
         if (ranked.length > 0) {

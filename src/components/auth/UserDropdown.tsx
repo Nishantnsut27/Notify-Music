@@ -26,9 +26,18 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({
     if (!isOpen) return;
 
     const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        onClose();
+      // If click is inside dropdown, do nothing
+      if (dropdownRef.current && dropdownRef.current.contains(e.target as Node)) {
+        return;
       }
+      
+      // If click is on the avatar button, let its own click handler toggle it
+      const target = e.target as Element;
+      if (target.closest('.user-avatar-btn')) {
+        return;
+      }
+
+      onClose();
     };
 
     document.addEventListener('mousedown', handleOutsideClick);
@@ -64,15 +73,6 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({
   const handleNavClick = (view: 'search' | 'playlists' | 'favorites' | 'recently-played' | 'history') => {
     onClose();
     setCurrentView(view);
-  };
-
-  const handleShowAccount = () => {
-    onClose();
-    addToast({
-      title: 'Account Information',
-      message: `Logged in as ${user?.fullName || 'User'} (${user?.email}). Cloud sync status: Active.`,
-      type: 'info',
-    });
   };
 
   const handleLogout = async () => {
@@ -125,22 +125,6 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({
       {/* Navigation Shortcut Menu Items */}
       {isAuthenticated ? (
         <>
-          <button
-            ref={actionItemRef}
-            type="button"
-            className="user-dropdown-item"
-            role="menuitem"
-            onClick={handleShowAccount}
-          >
-            <span className="user-dropdown-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
-            </span>
-            View Profile / Account
-          </button>
-
           <button
             type="button"
             className="user-dropdown-item"
@@ -199,7 +183,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({
                 <polyline points="10 9 9 9 8 9" />
               </svg>
             </span>
-            Listening History
+            History
           </button>
 
           <div className="user-dropdown-divider" />
@@ -224,7 +208,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({
         <button
           ref={actionItemRef}
           type="button"
-          className="user-dropdown-item"
+          className="user-dropdown-cta"
           role="menuitem"
           onClick={() => {
             onClose();

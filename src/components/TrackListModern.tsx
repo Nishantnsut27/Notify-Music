@@ -4,7 +4,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { useToastStore } from '../store/toastStore';
 import { getAudio } from '../hooks/usePlayer';
 import { ConfirmModal } from './ConfirmModal';
-import { SkeletonTrackList } from './Skeletons';
+import { SkeletonTrackList, SkeletonGuestCardsGrid } from './Skeletons';
 import { EmptySearchResults, EmptyState } from './EmptyState';
 import { ErrorDisplay } from './ErrorDisplay';
 import { useAuthStore } from '../store/authStore';
@@ -210,7 +210,11 @@ export function TrackListModern({
     return (
       <div className="modern-track-list">
         {title && <h2 className="track-list-title-modern">{title}</h2>}
-        <SkeletonTrackList count={8} />
+        {!isAuthenticated ? (
+          <SkeletonGuestCardsGrid count={8} />
+        ) : (
+          <SkeletonTrackList count={8} />
+        )}
       </div>
     );
   }
@@ -249,8 +253,9 @@ export function TrackListModern({
             description="Explore our trending tracks or search for your favorite artists and genres."
             actionText="Browse Trending"
             onAction={() => {
-              const { setCurrentView } = usePlayerStore.getState();
-              setCurrentView('search');
+              const store = usePlayerStore.getState();
+              store.clearResults();
+              store.setCurrentView('home' as any);
             }}
           />
         )}

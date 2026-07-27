@@ -83,3 +83,22 @@ export function SkeletonPlaylistsGrid({ count = 4 }: { count?: number }) {
     </div>
   );
 }
+export function SkeletonGuestCard() {
+  return (
+    <div className="guest-music-card" style={{ cursor: 'default' }}>
+      <Skeleton width="100%" height="auto" style={{ aspectRatio: '1 / 1', marginBottom: '0.75rem' }} borderRadius="8px" />
+      <Skeleton width="80%" height="1rem" style={{ marginBottom: '0.4rem' }} />
+      <Skeleton width="60%" height="0.85rem" />
+    </div>
+  );
+}
+
+export function SkeletonGuestCardsGrid({ count = 8 }: { count?: number }) {
+  return (
+    <div className="guest-cards-grid">
+      {Array.from({ length: count }).map((_, index) => (
+        <SkeletonGuestCard key={index} />
+      ))}
+    </div>
+  );
+}

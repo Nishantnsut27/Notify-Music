@@ -16,7 +16,7 @@ export const config = {
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || 'akjtj9a8',
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || '246473713748162',
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || 'KyDsVGeClNjzd4I3QI9ticzHvHU',
-  jiosaavnApiUrl: process.env.JIOSAAVN_API_URL || 'https://saavn.sumit.co',
+  jiosaavnApiUrl: process.env.JIOSAAVN_API_URL || 'https://notify-music-api.vercel.app',
   jamendoApiUrl: process.env.JAMENDO_API_URL || 'https://api.jamendo.com/v3.0',
   jamendoClientId: process.env.JAMENDO_CLIENT_ID || '2fa42d8a',
   requestTimeoutMs: parseInt(process.env.REQUEST_TIMEOUT_MS || '8000', 10),

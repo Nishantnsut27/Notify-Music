@@ -243,7 +243,7 @@ export function Sidebar() {
                       <line x1="12" y1="20" x2="12" y2="4" />
                       <line x1="6" y1="20" x2="6" y2="14" />
                     </svg>
-                    Listening History
+                    History
                   </button>
                 </li>
               </>
@@ -429,10 +429,6 @@ export function Sidebar() {
                 <span>
                   <span role="img" aria-label="Playlists">📂</span> {playlists.length} Playlists
                 </span>
-              </div>
-              <div className="user-sync-status">
-                <span className="sync-dot-glowing" />
-                <span>Cloud Synced</span>
               </div>
             </div>
           ) : (

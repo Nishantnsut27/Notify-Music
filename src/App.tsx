@@ -291,8 +291,8 @@ function App() {
   const renderMainContent = () => {
     switch (currentView) {
       case 'search':
-        // Render Personalized Dashboard if Authenticated and not currently executing an active search query
-        if (isAuthenticated && (!query || query.trim().length === 0) && results.length === 0) {
+        // Render Personalized Dashboard if Authenticated
+        if (isAuthenticated) {
           return (
             <div className="view-container">
               <PersonalizedHome />
@@ -305,9 +305,10 @@ function App() {
             <div className="content-search-container">
               <SearchBar />
             </div>
-            {error && (
+            {error ? (
               <div style={{ margin: '16px 0' }}>
                 <ErrorDisplay
+                  title="Music Temporarily Unavailable"
                   message={error}
                   onRetry={() => {
                     setError(null);
@@ -322,19 +323,19 @@ function App() {
                           setError(err instanceof Error ? err.message : 'Search failed. Please try again.');
                         })
                         .finally(() => setLoading(false));
+                    } else {
+                      window.location.reload();
                     }
                   }}
                   onDismiss={() => setError(null)}
                 />
               </div>
-            )}
-            {results.length > 0 ? (
+            ) : results.length > 0 ? (
               <div>
                 <TrackListModern
                   tracks={results}
                   title="Search Results"
                   isLoading={isLoading}
-                  error={error}
                 />
               </div>
             ) : (
@@ -343,7 +344,6 @@ function App() {
                   tracks={trending}
                   title="Trending Songs"
                   isLoading={isLoading}
-                  error={error}
                 />
               </div>
             )}
@@ -511,9 +511,9 @@ function App() {
         return (
           <div className="view-container">
             <div className="page-header">
-              <h1 className="page-title">Listening History</h1>
+              <h1 className="page-title">History</h1>
               <p className="page-subtitle">
-                {listeningHistory.length} {listeningHistory.length === 1 ? 'entry' : 'entries'} recorded in cloud
+                {listeningHistory.length} {listeningHistory.length === 1 ? 'song' : 'songs'} played recently
               </p>
             </div>
 
