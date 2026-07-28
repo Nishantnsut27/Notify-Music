@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { MusicService } from '../services/musicService.js';
 import { StandardApiResponse } from '../models/music.model.js';
+import { logger, serializeError } from '../utils/logger.js';
 
 const musicService = new MusicService();
 
@@ -27,7 +28,7 @@ export class MusicController {
         provider
       } as StandardApiResponse<typeof songs>);
     } catch (error) {
-      console.error('[MusicController] Search error:', error);
+      logger.error('MusicController', 'Search error', { error: serializeError(error) });
       res.status(500).json({
         success: false,
         data: [],
@@ -45,7 +46,7 @@ export class MusicController {
         provider
       } as StandardApiResponse<typeof songs>);
     } catch (error) {
-      console.error('[MusicController] Get trending error:', error);
+      logger.error('MusicController', 'Get trending error', { error: serializeError(error) });
       res.status(500).json({
         success: false,
         data: [],
@@ -82,7 +83,7 @@ export class MusicController {
         provider: song.provider
       });
     } catch (error) {
-      console.error('[MusicController] Get song error:', error);
+      logger.error('MusicController', 'Get song error', { error: serializeError(error) });
       res.status(500).json({
         success: false,
         data: null,
@@ -119,7 +120,7 @@ export class MusicController {
         provider: album.provider
       });
     } catch (error) {
-      console.error('[MusicController] Get album error:', error);
+      logger.error('MusicController', 'Get album error', { error: serializeError(error) });
       res.status(500).json({
         success: false,
         data: null,
@@ -156,7 +157,7 @@ export class MusicController {
         provider: artist.provider
       });
     } catch (error) {
-      console.error('[MusicController] Get artist error:', error);
+      logger.error('MusicController', 'Get artist error', { error: serializeError(error) });
       res.status(500).json({
         success: false,
         data: null,
@@ -193,7 +194,7 @@ export class MusicController {
         provider: playlist.provider
       });
     } catch (error) {
-      console.error('[MusicController] Get playlist error:', error);
+      logger.error('MusicController', 'Get playlist error', { error: serializeError(error) });
       res.status(500).json({
         success: false,
         data: null,
@@ -221,7 +222,7 @@ export class MusicController {
         data: suggestions
       });
     } catch (error) {
-      console.error('[MusicController] Get suggestions error:', error);
+      logger.error('MusicController', 'Get suggestions error', { error: serializeError(error) });
       res.status(500).json({
         success: false,
         data: [],

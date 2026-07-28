@@ -7,7 +7,7 @@ const searchCache = new Map<string, { timestamp: number; tracks: Track[] }>();
 const CACHE_TTL_MS = 300000;
 
 export class MusicAPI {
-  static async searchTracks(query: string, limit = PLAYER_DEFAULTS.DEFAULT_SEARCH_LIMIT): Promise<Track[]> {
+  static async searchTracks(query: string, limit = PLAYER_DEFAULTS.DEFAULT_SEARCH_LIMIT, signal?: AbortSignal): Promise<Track[]> {
     if (!query || !query.trim()) return [];
 
     const cacheKey = `${query.trim().toLowerCase()}:${limit}`;
@@ -18,19 +18,18 @@ export class MusicAPI {
 
     try {
       const url = `${API_ENDPOINTS.SEARCH}?q=${encodeURIComponent(query.trim())}&limit=${limit}`;
-      const body = await fetchJson<ApiResponse<Track[]>>(url);
+      const body = await fetchJson<ApiResponse<Track[]>>(url, { signal });
 
       if (!body.success || !Array.isArray(body.data)) {
         throw new Error('Invalid response payload format from music backend.');
       }
 
-      if (body.data.length === 0) {
-        throw new Error(`No music found for "${query}". Try searching for genres like rap, pop, electronic, or jazz.`);
-      }
-
       searchCache.set(cacheKey, { timestamp: Date.now(), tracks: body.data });
       return body.data;
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        throw error;
+      }
       console.error('[MusicAPI] Search error:', error);
       throw error;
     }

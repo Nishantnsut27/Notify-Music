@@ -1154,3 +1154,8 @@
     padding: 0.1rem 0.4rem;
   }
 }
+
+.playback-error { position:absolute; left:50%; bottom:calc(100% + 8px); transform:translateX(-50%); display:flex; align-items:center; gap:.65rem; max-width:min(460px,calc(100vw - 24px)); padding:.55rem .75rem; border:1px solid rgba(255,107,107,.5); border-radius:10px; background:rgba(44,14,14,.96); color:#fff; font-size:.78rem; box-shadow:0 8px 24px rgba(0,0,0,.35); z-index:2; }
+.playback-error button { border:0; border-radius:999px; background:#fff; color:#611; padding:.3rem .65rem; font-weight:700; cursor:pointer; }
+.player-buffering-spinner { width:18px; height:18px; border:2px solid rgba(0,0,0,.28); border-top-color:#000; border-radius:50%; animation:player-buffer-spin .75s linear infinite; }
+@keyframes player-buffer-spin { to { transform:rotate(360deg); } }

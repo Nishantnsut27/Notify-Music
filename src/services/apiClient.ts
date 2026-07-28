@@ -101,6 +101,9 @@ export async function fetchJson<T>(
 
     return data as T;
   } catch (error) {
+    if (options?.signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+      throw error;
+    }
     if (error instanceof ApiError) {
       throw error;
     }

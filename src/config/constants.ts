@@ -12,6 +12,7 @@ export const STORAGE_KEYS = {
   PLAYLISTS: 'playlists',
   FAVORITES: 'favorites',
   THEME: 'theme',
+  PLAYBACK: 'notify-playback-state',
 } as const;
 
 export const VIEWS = {

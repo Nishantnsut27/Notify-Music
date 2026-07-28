@@ -4,6 +4,30 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { clearAuthCookies } from '../utils/token.utils.js';
 
 export class UserController {
+  public static async getSearchHistory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await UserService.getSearchHistory(req.user!._id.toString());
+      res.status(200).json({ success: true, data });
+    } catch (error) { next(error); }
+  }
+
+  public static async addSearchHistory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const query = typeof req.body.query === 'string' ? req.body.query : '';
+      if (!query.trim()) { res.status(400).json({ success: false, error: 'A search query is required.' }); return; }
+      await UserService.addSearchHistory(req.user!._id.toString(), query);
+      res.status(200).json({ success: true });
+    } catch (error) { next(error); }
+  }
+
+  public static async removeSearchHistory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try { await UserService.removeSearchHistory(req.user!._id.toString(), String(req.params.query)); res.status(200).json({ success: true }); } catch (error) { next(error); }
+  }
+
+  public static async clearSearchHistory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try { await UserService.clearSearchHistory(req.user!._id.toString()); res.status(200).json({ success: true }); } catch (error) { next(error); }
+  }
+
   // =========================================================================
   // Profile Handlers
   // =========================================================================

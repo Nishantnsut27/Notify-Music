@@ -3,6 +3,7 @@ import { IMusicProvider } from './musicProvider.interface.js';
 import { Song, Album, Artist, Playlist } from '../models/music.model.js';
 import { MusicNormalizer } from '../normalizers/musicNormalizer.js';
 import { config } from '../config/config.js';
+import { requestWithRetry } from '../utils/requestHelpers.js';
 
 export class JioSaavnProvider implements IMusicProvider {
   readonly name = 'jiosaavn' as const;
@@ -20,7 +21,7 @@ export class JioSaavnProvider implements IMusicProvider {
   }
 
   async search(query: string, limit = 20): Promise<Song[]> {
-    try {
+    return requestWithRetry('JioSaavnProvider', 'search songs', async () => {
       const response = await this.client.get('/api/search/songs', {
         params: { query, limit, page: 0 }
       });
@@ -31,26 +32,22 @@ export class JioSaavnProvider implements IMusicProvider {
       }
 
       return results.map((rawSong: unknown) => MusicNormalizer.normalizeJioSaavnSong(rawSong));
-    } catch {
-      return [];
-    }
+    }, { query, limit });
   }
 
   async getSongById(id: string): Promise<Song | null> {
-    try {
+    return requestWithRetry('JioSaavnProvider', 'fetch song details', async () => {
       const response = await this.client.get(`/api/songs/${id}`);
       const songs = response.data?.data;
       if (Array.isArray(songs) && songs.length > 0) {
         return MusicNormalizer.normalizeJioSaavnSong(songs[0]);
       }
       return null;
-    } catch {
-      return null;
-    }
+    }, { id });
   }
 
   async getAlbumById(id: string): Promise<Album | null> {
-    try {
+    return requestWithRetry('JioSaavnProvider', 'fetch album details', async () => {
       const response = await this.client.get('/api/albums', {
         params: { id }
       });
@@ -59,26 +56,22 @@ export class JioSaavnProvider implements IMusicProvider {
         return MusicNormalizer.normalizeJioSaavnAlbum(data);
       }
       return null;
-    } catch {
-      return null;
-    }
+    }, { id });
   }
 
   async getArtistById(id: string): Promise<Artist | null> {
-    try {
+    return requestWithRetry('JioSaavnProvider', 'fetch artist details', async () => {
       const response = await this.client.get(`/api/artists/${id}`);
       const data = response.data?.data;
       if (data && typeof data === 'object' && (data.name || (Array.isArray(data.topSongs) && data.topSongs.length > 0))) {
         return MusicNormalizer.normalizeJioSaavnArtist(data);
       }
       return null;
-    } catch {
-      return null;
-    }
+    }, { id });
   }
 
   async getPlaylistById(id: string): Promise<Playlist | null> {
-    try {
+    return requestWithRetry('JioSaavnProvider', 'fetch playlist details', async () => {
       const response = await this.client.get('/api/playlists', {
         params: { id }
       });
@@ -87,13 +80,11 @@ export class JioSaavnProvider implements IMusicProvider {
         return MusicNormalizer.normalizeJioSaavnPlaylist(data);
       }
       return null;
-    } catch {
-      return null;
-    }
+    }, { id });
   }
 
   async getSuggestions(id: string, limit = 10): Promise<Song[]> {
-    try {
+    return requestWithRetry('JioSaavnProvider', 'fetch song suggestions', async () => {
       const response = await this.client.get(`/api/songs/${id}/suggestions`, {
         params: { limit }
       });
@@ -102,8 +93,6 @@ export class JioSaavnProvider implements IMusicProvider {
         return results.map((rawSong: unknown) => MusicNormalizer.normalizeJioSaavnSong(rawSong));
       }
       return [];
-    } catch {
-      return [];
-    }
+    }, { id, limit });
   }
 }

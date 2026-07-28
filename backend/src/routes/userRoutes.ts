@@ -14,6 +14,11 @@ userRouter.put('/profile', UserController.updateProfile as any);
 userRouter.post('/avatar', uploadAvatarMiddleware as any, UserController.uploadAvatar as any);
 userRouter.delete('/account', UserController.deleteAccount as any);
 
+userRouter.get('/search-history', UserController.getSearchHistory as any);
+userRouter.post('/search-history', UserController.addSearchHistory as any);
+userRouter.delete('/search-history/:query', UserController.removeSearchHistory as any);
+userRouter.delete('/search-history', UserController.clearSearchHistory as any);
+
 // Favorites
 userRouter.get('/favorites', UserController.getFavorites as any);
 userRouter.post('/favorites', UserController.addFavorite as any);

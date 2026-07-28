@@ -273,7 +273,7 @@ export function TrackListModern({
             const isCurrent = isCurrentTrack(track);
             return (
               <div
-                key={track.id}
+                key={`${track.id}-${index}`}
                 className={`guest-music-card ${isCurrent ? 'active' : ''}`}
                 onClick={() => handlePlayTrack(track, index)}
               >
@@ -316,7 +316,7 @@ export function TrackListModern({
         >
           {tracks.map((track, index) => (
             <TrackItemModern
-              key={track.id}
+              key={`${track.id}-${index}`}
               track={track}
               index={index}
               isCurrent={isCurrentTrack(track)}

@@ -1,4 +1,5 @@
 import { Song } from '../models/music.model.js';
+import { normalizeStringForSearch, scoreSongForQuality, isLikelyOfficialSong } from './musicSearch.js';
 
 const PROVIDER_PRIORITY: Record<string, number> = {
   jiosaavn: 1,
@@ -7,14 +8,7 @@ const PROVIDER_PRIORITY: Record<string, number> = {
 };
 
 function normalizeString(str: string): string {
-  if (!str) return '';
-  return str
-    .toLowerCase()
-    .replace(/\(.*?\)/g, '')
-    .replace(/\[.*?\]/g, '')
-    .replace(/official audio|official video|lyric video|remastered|version|from ".*?"/gi, '')
-    .replace(/[^a-z0-9]/gi, '')
-    .trim();
+  return normalizeStringForSearch(str);
 }
 
 export function areSongsDuplicate(s1: Song, s2: Song): boolean {
@@ -54,8 +48,10 @@ export function deduplicateSongs(songs: Song[]): Song[] {
       const existing = result[existingIndex];
       const existingPriority = PROVIDER_PRIORITY[existing.provider || ''] || 99;
       const currentPriority = PROVIDER_PRIORITY[song.provider || ''] || 99;
+      const existingQuality = scoreSongForQuality(existing);
+      const currentQuality = scoreSongForQuality(song);
 
-      if (currentPriority < existingPriority) {
+      if (currentQuality > existingQuality || (currentQuality === existingQuality && currentPriority < existingPriority) || (currentQuality === existingQuality && currentPriority === existingPriority && isLikelyOfficialSong(song) && !isLikelyOfficialSong(existing))) {
         result[existingIndex] = song;
       }
     }
@@ -67,11 +63,13 @@ export function deduplicateSongs(songs: Song[]): Song[] {
 export function rankSongs(songs: Song[], query: string): Song[] {
   if (!query || !query.trim()) return songs;
   const normQuery = normalizeString(query);
+  const queryTerms = query.toLowerCase();
 
   const scored = songs.map(song => {
     let score = 0;
     const normTitle = normalizeString(song.name);
     const normArtist = normalizeString(song.artist_name);
+    const rawTitle = `${song.name} ${song.artist_name}`.toLowerCase();
 
     if (normTitle === normQuery) {
       score += 100;
@@ -85,6 +83,23 @@ export function rankSongs(songs: Song[], query: string): Song[] {
       score += 50;
     } else if (normArtist.includes(normQuery)) {
       score += 25;
+    }
+
+    if (isLikelyOfficialSong(song)) {
+      score += 15;
+    }
+
+    // Prefer complete metadata and normal-length releases when results otherwise tie.
+    if (song.artist_id) score += 4;
+    if (song.album_id) score += 3;
+    if (song.duration >= 90 && song.duration <= 900) score += 2;
+
+    if (rawTitle.includes('remix') || rawTitle.includes('mashup') || rawTitle.includes('slowed') || rawTitle.includes('reverb') || rawTitle.includes('cover')) {
+      score -= queryTerms.includes('remix') || queryTerms.includes('mashup') || queryTerms.includes('slowed') ? 0 : 20;
+    }
+
+    if (song.album_image && song.album_image !== '/placeholder-album.svg') {
+      score += 5;
     }
 
     const providerPriority = PROVIDER_PRIORITY[song.provider || ''] || 99;

@@ -67,6 +67,8 @@ export interface PlayerState {
   duration: number;
   volume: number;
   isMuted: boolean;
+  isBuffering: boolean;
+  playbackError: string | null;
   queue: Track[];
   currentIndex: number;
   isShuffling: boolean;

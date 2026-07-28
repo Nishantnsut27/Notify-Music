@@ -5,6 +5,7 @@ import type { Track } from '../types/types';
 import { TrackListModern } from './TrackListModern';
 import { MusicAPI } from '../services/musicApi';
 import { SearchBar } from './SearchBar';
+import { SearchResults } from './SearchResults';
 
 function getPersonalizedGreeting(): string {
   const baseMessages = [
@@ -41,8 +42,15 @@ export function PersonalizedHome() {
 
   const [trendingTracks, setTrendingTracks] = useState<Track[]>([]);
   const [trendingPage, setTrendingPage] = useState(0);
+  const [greeting, setGreeting] = useState(() => getPersonalizedGreeting());
 
-  const greeting = getPersonalizedGreeting();
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setGreeting(getPersonalizedGreeting());
+    }, 15000); // Rotate the greeting every 15 seconds
+    return () => clearInterval(interval);
+  }, []);
+
   const firstName = user?.fullName ? user.fullName.split(' ')[0] : '';
 
   const isSearching = query.trim().length > 0;
@@ -267,8 +275,8 @@ export function PersonalizedHome() {
             </button>
           </div>
           <div className="recent-tracks-grid">
-            {recentlyPlayed.slice(0, 6).map((track: Track) => (
-              <div key={track.id} className="recent-track-card" onClick={() => playTrack(track, recentlyPlayed)}>
+            {recentlyPlayed.slice(0, 6).map((track: Track, index) => (
+              <div key={`${track.id}-${index}`} className="recent-track-card" onClick={() => playTrack(track, recentlyPlayed)}>
                 <div className="track-cover-wrapper">
                   <img
                     src={track.image || track.album_image || '/Favicon.png'}
@@ -303,9 +311,13 @@ export function PersonalizedHome() {
             {isSearching ? 'Search Results' : 'Trending & Recommended'}
           </h2>
         </div>
-        <TrackListModern tracks={featuredTracks} title="" isLoading={isLoading} error={error} />
+        {isSearching ? (
+          <SearchResults tracks={results} query={query} isLoading={isLoading} error={error} />
+        ) : (
+          <TrackListModern tracks={featuredTracks} title="" isLoading={isLoading} error={error} />
+        )}
         
-        {hasMoreTracks && (
+        {!isSearching && hasMoreTracks && (
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>
             <button 
               onClick={() => setTrendingPage(prev => prev + 1)} 

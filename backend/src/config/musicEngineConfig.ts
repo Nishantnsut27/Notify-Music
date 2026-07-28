@@ -1,0 +1,52 @@
+import { config } from './config.js';
+
+export const TRENDING_ARTIST_POOL: readonly string[] = [
+  'Arijit Singh',
+  'Shreya Ghoshal',
+  'King',
+  'KK',
+  'Atif Aslam',
+  'Jubin Nautiyal',
+  'Honey Singh',
+  'Badshah',
+  'Diljit Dosanjh',
+  'Anuv Jain',
+  'AP Dhillon',
+  'Divine',
+  'Seedhe Maut',
+  'Sonu Nigam',
+  'Mohit Chauhan',
+  'Neha Kakkar',
+  'Armaan Malik',
+  'Pritam',
+  'A.R. Rahman',
+  'Vishal Mishra',
+  'B Praak',
+  'Darshan Raval',
+  'Guru Randhawa',
+  'Shankar Mahadevan',
+  'Sunidhi Chauhan',
+  'Sachet Tandon',
+  'Tulsi Kumar',
+  'Shilpa Rao',
+  'Asees Kaur',
+  'Sukhe',
+  'Karan Aujla',
+  'Sidhu Moose Wala',
+  'Ritviz'
+];
+
+export const MUSIC_ENGINE_CONFIG = {
+  searchCacheTtlMs: parseInt(process.env.MUSIC_SEARCH_CACHE_TTL_MS || '300000', 10),
+  metadataCacheTtlMs: parseInt(process.env.MUSIC_METADATA_CACHE_TTL_MS || '900000', 10),
+  trendingCacheTtlMs: parseInt(process.env.MUSIC_TRENDING_CACHE_TTL_MS || '45000', 10),
+  requestTimeoutMs: config.requestTimeoutMs,
+  retryDelayMs: parseInt(process.env.MUSIC_RETRY_DELAY_MS || '250', 10),
+  maxRetryAttempts: 2,
+  searchResultLimitMultiplier: 3,
+  trendingSearchLimit: 12,
+  trendingArtistMinCount: 4,
+  trendingArtistMaxCount: 6,
+  trendingSongsPerArtistMin: 2,
+  trendingSongsPerArtistMax: 4
+} as const;

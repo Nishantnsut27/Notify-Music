@@ -3,9 +3,33 @@ import { PlaylistModel } from '../models/playlist.model.js';
 import { Favorite } from '../models/favorite.model.js';
 import { RecentlyPlayed } from '../models/recentlyPlayed.model.js';
 import { ListeningHistory } from '../models/listeningHistory.model.js';
+import { SearchHistory } from '../models/searchHistory.model.js';
 import { CloudinaryService } from './cloudinaryService.js';
 
 export class UserService {
+  public static async getSearchHistory(userId: string, limit = 10) {
+    return SearchHistory.find({ user: userId }).sort({ searchedAt: -1 }).limit(limit).lean();
+  }
+
+  public static async addSearchHistory(userId: string, query: string) {
+    const cleanQuery = query.trim().replace(/\s+/g, ' ');
+    if (!cleanQuery) return;
+    await SearchHistory.findOneAndUpdate(
+      { user: userId, normalizedQuery: cleanQuery.toLowerCase() },
+      { user: userId, query: cleanQuery, normalizedQuery: cleanQuery.toLowerCase(), searchedAt: new Date() },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    const stale = await SearchHistory.find({ user: userId }).sort({ searchedAt: -1 }).skip(10).select('_id').lean();
+    if (stale.length) await SearchHistory.deleteMany({ _id: { $in: stale.map(item => item._id) } });
+  }
+
+  public static async removeSearchHistory(userId: string, query: string) {
+    await SearchHistory.deleteOne({ user: userId, normalizedQuery: query.trim().toLowerCase() });
+  }
+
+  public static async clearSearchHistory(userId: string) {
+    await SearchHistory.deleteMany({ user: userId });
+  }
   // =========================================================================
   // Favorites Service
   // =========================================================================

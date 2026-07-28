@@ -1,6 +1,8 @@
 import { fetchJson, API_BASE_URL } from './apiClient';
 import type { Track, Playlist } from '../types/types';
 
+export interface SearchHistoryItem { query: string; searchedAt: string; }
+
 const USER_BASE_URL = `${API_BASE_URL}/api/user`;
 const AUTH_BASE_URL = `${API_BASE_URL}/api/auth`;
 
@@ -103,6 +105,25 @@ export const userApi = {
       method: 'POST',
       body: JSON.stringify({ trackData: track, playDurationSeconds, completed }),
     }).catch(() => {});
+  },
+
+  async getSearchHistory(): Promise<SearchHistoryItem[]> {
+    const res = await fetchJson<{ success: boolean; data: SearchHistoryItem[] }>(`${USER_BASE_URL}/search-history`);
+    return res.data || [];
+  },
+
+  async addSearchHistory(query: string): Promise<void> {
+    await fetchJson(`${USER_BASE_URL}/search-history`, {
+      method: 'POST', body: JSON.stringify({ query }),
+    });
+  },
+
+  async removeSearchHistory(query: string): Promise<void> {
+    await fetchJson(`${USER_BASE_URL}/search-history/${encodeURIComponent(query)}`, { method: 'DELETE' });
+  },
+
+  async clearSearchHistory(): Promise<void> {
+    await fetchJson(`${USER_BASE_URL}/search-history`, { method: 'DELETE' });
   },
 
   // Profile Management & Cloudinary Avatar Upload

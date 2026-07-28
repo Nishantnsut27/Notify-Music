@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SearchBar } from './components/SearchBar';
+import { SearchResults } from './components/SearchResults';
 import { TrackListModern } from './components/TrackListModern';
 import { PlayerControls } from './components/PlayerControls';
 import { Sidebar } from './components/Sidebar';
@@ -253,10 +254,10 @@ function App() {
         setLoading(true);
         setError(null);
         try {
-          console.log('🎵 Loading trending music tracks...');
+          if (import.meta.env.DEV) console.log('🎵 Loading trending music tracks...');
           const tracks = await MusicAPI.getTrendingTracks(25);
           setTrending(tracks);
-          console.log('✅ Loaded trending tracks:', tracks.length);
+          if (import.meta.env.DEV) console.log('✅ Loaded trending tracks:', tracks.length);
         } catch (error) {
           console.error('❌ Failed to load trending tracks:', error);
           const errorMsg =
@@ -290,15 +291,9 @@ function App() {
   const renderMainContent = () => {
     switch (currentView) {
       case 'search':
-        // Render Personalized Dashboard if Authenticated
         if (isAuthenticated) {
-          return (
-            <div className="view-container">
-              <PersonalizedHome />
-            </div>
-          );
+          return <div className="view-container"><PersonalizedHome /></div>;
         }
-
         return (
           <div className="view-container">
             <div className="content-search-container">
@@ -329,14 +324,8 @@ function App() {
                   onDismiss={() => setError(null)}
                 />
               </div>
-            ) : results.length > 0 ? (
-              <div>
-                <TrackListModern
-                  tracks={results}
-                  title="Search Results"
-                  isLoading={isLoading}
-                />
-              </div>
+            ) : results.length > 0 || usePlayerStore.getState().query ? (
+              <SearchResults tracks={results} query={usePlayerStore.getState().query} isLoading={isLoading} />
             ) : (
               <div>
                 <TrackListModern

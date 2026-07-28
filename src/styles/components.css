@@ -2434,3 +2434,57 @@
     gap: 0.85rem;
   }
 }
+
+.search-bar-loading-icon { animation: search-icon-spin .75s linear infinite; }
+@keyframes search-icon-spin { to { transform: rotate(360deg); } }
+
+.search-bar-shell { position: relative; width: 100%; max-width: 600px; }
+.search-bar-shell .search-bar-container { max-width: none; }
+.search-suggestions { position: absolute; z-index: 30; top: calc(100% + 0.5rem); left: 0; right: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.12); border-radius: 16px; background: rgba(24,24,24,.98); box-shadow: 0 18px 45px rgba(0,0,0,.45); }
+.search-suggestions-heading { display:flex; justify-content:space-between; padding:.8rem 1rem .35rem; color:var(--text-muted); font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+.search-suggestions-heading button { border:0; background:transparent; color:#1ed760; cursor:pointer; font:inherit; text-transform:none; }
+.search-suggestion { display:flex; align-items:center; gap:.75rem; min-height:56px; padding:.5rem .85rem; cursor:pointer; color:#fff; }
+.search-suggestion:hover, .search-suggestion.active { background:rgba(255,255,255,.09); }
+.search-suggestion img { width:40px; height:40px; border-radius:7px; object-fit:cover; }
+.search-suggestion span { min-width:0; display:flex; flex-direction:column; gap:.12rem; flex:1; overflow:hidden; }
+.search-suggestion strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.92rem; font-weight:600; }
+.search-suggestion small { color:var(--text-muted); font-size:.75rem; }
+.search-suggestion mark { background:transparent; color:#1ed760; padding:0; }
+.search-suggestion > button { border:0; background:transparent; color:var(--text-muted); font-size:1.25rem; padding:.5rem; cursor:pointer; }
+.search-results { display:grid; min-width:0; gap:2rem; padding:0 1rem 2rem; }
+.search-results > section { min-width:0; }
+.search-results .modern-track-list,
+.search-results .track-list-container-modern { min-width:0; max-width:100%; }
+.search-section-title { margin:0 0 .8rem; color:#fff; font-size:1.35rem; }
+.search-entity-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:.8rem; }
+.search-entity-grid button { min-width:0; text-align:left; border:0; border-radius:10px; background:rgba(255,255,255,.045); color:#fff; padding:.75rem; cursor:pointer; display:grid; gap:.4rem; }
+.search-entity-grid button:hover, .search-entity-grid button:focus-visible { background:rgba(255,255,255,.1); outline:2px solid rgba(29,185,84,.7); outline-offset:2px; }
+.search-entity-grid img { width:100%; aspect-ratio:1; border-radius:7px; object-fit:cover; }
+.search-entity-grid span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.search-entity-grid small { color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.search-empty { margin:2rem 1rem; padding:3rem 1rem; text-align:center; border:1px dashed rgba(255,255,255,.2); border-radius:16px; color:var(--text-muted); }
+.search-empty h2 { color:#fff; margin:0 0 .5rem; }
+.search-empty button { margin-top:1rem; border:0; border-radius:999px; background:#1db954; color:#061b0d; font-weight:700; padding:.65rem 1rem; cursor:pointer; }
+@media (max-width: 768px) {
+  .search-results { gap:1.5rem; padding:0 .75rem calc(1.5rem + env(safe-area-inset-bottom)); overflow-x:hidden; }
+  .search-results .track-item-modern { min-width:0; width:100%; }
+  .search-results .track-info-modern { min-width:0; }
+  .search-results .track-title-modern,
+  .search-results .track-artist-modern { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .search-entity-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:.65rem; }
+  .search-entity-grid button { min-height:44px; padding:.6rem; }
+}
+@media (max-width: 480px) {
+  .search-bar-shell { z-index:40; }
+  .search-suggestions { position:absolute; top:calc(100% + .35rem); left:0; right:0; max-height:280px; overflow-y:auto; border-radius:12px; }
+  .search-suggestions-heading { padding:.65rem .8rem .25rem; font-size:.7rem; }
+  .search-suggestion { min-height:46px; gap:.55rem; padding:.35rem .7rem; }
+  .search-suggestion img { width:34px; height:34px; }
+  .search-suggestion strong { font-size:.84rem; }
+  .search-suggestion small { font-size:.68rem; }
+  .search-suggestion > button { padding:.35rem; font-size:1.1rem; }
+  .search-results { gap:1.25rem; padding-inline:.5rem; }
+  .search-results .track-item-modern { padding:.5rem; }
+  .search-section-title { font-size:1.15rem; }
+  .search-entity-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}

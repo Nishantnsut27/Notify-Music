@@ -36,6 +36,11 @@ export class CacheService {
     }
   }
 
+  public delete(key: string): void {
+    this.cache.delete(key);
+    this.inFlightMap.delete(key);
+  }
+
   public async getOrFetch<T>(key: string, fetchFn: () => Promise<T>, customTtlMs?: number): Promise<T> {
     const cached = this.get<T>(key);
     if (cached !== null) {

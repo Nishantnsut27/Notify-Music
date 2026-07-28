@@ -52,12 +52,15 @@ export function PlayerControls() {
     isPlaying,
     volume,
     isMuted,
+    isBuffering,
+    playbackError,
     togglePlayPause,
     nextTrack,
     previousTrack,
     seek,
     changeVolume,
-    mute
+    mute,
+    retry,
   } = usePlayer();
 
   const {
@@ -272,6 +275,12 @@ export function PlayerControls() {
 
   return (
     <div className="spotify-player-card">
+      {playbackError && (
+        <div className="playback-error" role="alert">
+          <span>{playbackError}</span>
+          <button type="button" onClick={retry}>Retry</button>
+        </div>
+      )}
       <div 
         className="progress-bar-container"
         ref={progressRef}
@@ -325,7 +334,7 @@ export function PlayerControls() {
           <div className="title-2">{currentTrack.artist_name}</div>
         </div>
 
-        {isPlaying && (
+        {(isPlaying || isBuffering) && (
           <AudioVisualizer isPlaying={isPlaying} size="medium" />
         )}
       </div>
@@ -356,9 +365,12 @@ export function PlayerControls() {
         <button
           className="control-btn play-btn"
           onClick={togglePlayPause}
-          title={isPlaying ? 'Pause' : 'Play'}
+          title={isBuffering ? 'Pause while buffering' : (isPlaying ? 'Pause' : 'Play')}
+          aria-label={isBuffering ? 'Pause while buffering' : (isPlaying ? 'Pause' : 'Play')}
         >
-          {isPlaying ? (
+          {isBuffering ? (
+            <span className="player-buffering-spinner" aria-hidden="true" />
+          ) : isPlaying ? (
             <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="4" width="4" height="16"/>
               <rect x="14" y="4" width="4" height="16"/>

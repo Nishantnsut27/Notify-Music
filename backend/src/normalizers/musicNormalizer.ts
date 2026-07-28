@@ -24,7 +24,7 @@ export class MusicNormalizer {
       ? raw.artists.primary[0].id
       : raw.artistId || '';
 
-    const bestImage = extractBestImage(raw.image);
+    const bestImage = extractBestImage(raw.image || raw.album?.image || raw.images || raw.thumbnail);
     const audioUrl = extractBestAudioUrl(raw.downloadUrl || raw.audio);
 
     return {

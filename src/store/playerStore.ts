@@ -13,6 +13,8 @@ interface PlayerStore extends PlayerState {
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setIsPlaying: (playing: boolean) => void;
+  setBuffering: (buffering: boolean) => void;
+  setPlaybackError: (error: string | null) => void;
   setVolume: (volume: number) => void;
   toggleMute: () => void;
   seekTo: (time: number) => void;
@@ -144,6 +146,8 @@ export const usePlayerStore = create<AppStore>()(
     duration: 0,
     volume: loadFromLocalStorage(STORAGE_KEYS.VOLUME, PLAYER_DEFAULTS.DEFAULT_VOLUME),
     isMuted: false,
+    isBuffering: false,
+    playbackError: null,
     queue: [],
     currentIndex: -1,
     isShuffling: false,
@@ -174,6 +178,8 @@ export const usePlayerStore = create<AppStore>()(
       set({
         currentTrack: track,
         isPlaying: true,
+        isBuffering: true,
+        playbackError: null,
         queue: newQueue,
         currentIndex: newIndex >= 0 ? newIndex : 0,
         currentTime: 0,
@@ -188,7 +194,7 @@ export const usePlayerStore = create<AppStore>()(
       }
     },
 
-    pauseTrack: () => set({ isPlaying: false }),
+    pauseTrack: () => set({ isPlaying: false, isBuffering: false }),
 
     nextTrack: () => {
       const state = get();
@@ -202,7 +208,7 @@ export const usePlayerStore = create<AppStore>()(
         if (state.repeatMode === 'all') {
           nextIndex = 0;
         } else {
-          set({ isPlaying: false });
+          set({ isPlaying: false, isBuffering: false });
           return;
         }
       }
@@ -214,7 +220,9 @@ export const usePlayerStore = create<AppStore>()(
           currentIndex: nextIndex,
           currentTime: 0,
           duration: nextTrack.duration || 0,
-          isPlaying: true
+          isPlaying: true,
+          isBuffering: true,
+          playbackError: null,
         });
       }
     },
@@ -240,7 +248,9 @@ export const usePlayerStore = create<AppStore>()(
           currentIndex: prevIndex,
           currentTime: 0,
           duration: prevTrack.duration || 0,
-          isPlaying: true
+          isPlaying: true,
+          isBuffering: true,
+          playbackError: null,
         });
       }
     },
@@ -248,6 +258,8 @@ export const usePlayerStore = create<AppStore>()(
     setCurrentTime: (time: number) => set({ currentTime: time }),
     setDuration: (duration: number) => set({ duration }),
     setIsPlaying: (playing: boolean) => set({ isPlaying: playing }),
+    setBuffering: (buffering: boolean) => set({ isBuffering: buffering }),
+    setPlaybackError: (playbackError: string | null) => set({ playbackError, isBuffering: false }),
     
     setVolume: (volume: number) => {
       const clamped = Math.max(0, Math.min(100, volume));
@@ -285,7 +297,7 @@ export const usePlayerStore = create<AppStore>()(
       });
     },
 
-    clearQueue: () => set({ queue: [], currentIndex: -1, currentTrack: null, isPlaying: false }),
+    clearQueue: () => set({ queue: [], currentIndex: -1, currentTrack: null, isPlaying: false, isBuffering: false, playbackError: null }),
 
     setQuery: (query: string) => set({ query }),
     setResults: (results: Track[]) => set({ results }),
