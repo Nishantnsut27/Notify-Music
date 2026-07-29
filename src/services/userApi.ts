@@ -1,4 +1,5 @@
 import { fetchJson, API_BASE_URL } from './apiClient';
+import { getStoredToken } from './tokenStorage';
 import type { Track, Playlist } from '../types/types';
 
 export interface SearchHistoryItem { query: string; searchedAt: string; }
@@ -139,7 +140,7 @@ export const userApi = {
     const formData = new FormData();
     formData.append('avatar', file);
 
-    const token = localStorage.getItem('notify_auth_token');
+    const token = getStoredToken();
     const headers: Record<string, string> = {};
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;

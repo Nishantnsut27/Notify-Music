@@ -21,6 +21,15 @@ export interface IUser extends Document {
   accountStatus: 'active' | 'suspended' | 'pending';
   isEmailVerified: boolean;
   lastLoginAt?: Date;
+
+  verificationOtpHash?: string;
+  verificationOtpExpiresAt?: Date;
+  verificationAttempts?: number;
+
+  resetOtpHash?: string;
+  resetOtpExpiresAt?: Date;
+  resetAttempts?: number;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -96,13 +105,38 @@ const userSchema = new Schema<IUser>(
     lastLoginAt: {
       type: Date,
     },
+
+    verificationOtpHash: {
+      type: String,
+      select: false,
+    },
+    verificationOtpExpiresAt: {
+      type: Date,
+      select: false,
+    },
+    verificationAttempts: {
+      type: Number,
+      default: 0,
+    },
+
+    resetOtpHash: {
+      type: String,
+      select: false,
+    },
+    resetOtpExpiresAt: {
+      type: Date,
+      select: false,
+    },
+    resetAttempts: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,
   }
 );
 
-// Database Indexes for Performance and Fast Lookup
 userSchema.index({ role: 1 });
 userSchema.index({ accountStatus: 1 });
 userSchema.index({ passwordResetToken: 1 });

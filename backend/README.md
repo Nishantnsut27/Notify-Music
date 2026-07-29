@@ -1,108 +1,164 @@
-# Notify Music Player - Backend API Documentation & Production Guide
+# Notify Music Backend
 
-A secure, scalable Express + TypeScript backend providing JWT authentication (Access & Refresh tokens), MongoDB Atlas database persistence, and Cloudinary media management for Notify Music Player.
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Express](https://img.shields.io/badge/Express-4.21-000000?logo=express&logoColor=white)](https://expressjs.com)
+[![MongoDB](https://img.shields.io/badge/MongoDB-8.12-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com)
+[![Brevo](https://img.shields.io/badge/Email-Brevo-0D7CFF?logo=sendinblue&logoColor=white)](https://www.brevo.com)
+[![JWT](https://img.shields.io/badge/Auth-JWT-000000?logo=jsonwebtokens&logoColor=white)](https://jwt.io)
+[![Render](https://img.shields.io/badge/Deploy-Render-46E3B7?logo=render&logoColor=white)](https://render.com)
+
+> Where Music Finds You — Express backend for the Notify Music streaming platform. Handles authentication, user data, music search from JioSaavn and Jamendo, and email notifications via Brevo.
 
 ---
 
-## 🚀 Environment Variables
+## Features
 
-Create `.env` in the `backend/` root directory:
+**Auth** — JWT dual-token (access + refresh with rotation), OTP-based email verification, forgot/reset password, Remember Me, rate limiting.
 
-```env
-PORT=5000
-NODE_ENV=production
+**Music** — Search, trending, metadata (song/album/artist/playlist) with automatic JioSaavn → Jamendo fallback, in-memory caching, intelligent deduplication and noise filtering.
 
-# MongoDB Atlas Configuration
-MONGODB_URI="mongodb+srv://<username>:<password>@cluster0.ebf1wte.mongodb.net/notify_music_player?retryWrites=true&w=majority"
-MONGODB_DB_NAME="notify_music_player"
+**User Data** — Favorites, playlists (CRUD + track reordering), recently played, listening history, search history, profile management, avatar upload (Cloudinary).
 
-# JWT Authentication Configuration
-JWT_SECRET="notify_music_player_super_secret_jwt_key_2026_prod"
-JWT_EXPIRES_IN="15m"
-REFRESH_TOKEN_SECRET="notify_music_player_refresh_secret_key_2026_prod"
-REFRESH_TOKEN_EXPIRES_IN="7d"
-COOKIE_SECRET="notify_music_player_cookie_secret_2026"
+**Security** — HTTP-only cookies, Helmet, CORS, 7 rate limiters, bot protection, Zod validation, bcrypt hashing, request size limits.
 
-# Cloudinary Avatar Storage Configuration
-CLOUDINARY_CLOUD_NAME="akjtj9a8"
-CLOUDINARY_API_KEY="246473713748162"
-CLOUDINARY_API_SECRET="KyDsVGeClNjzd4I3QI9ticzHvHU"
+---
 
-# External Music Provider APIs
-JIOSAAVN_API_URL="https://saavn.sumit.co"
-JAMENDO_API_URL="https://api.jamendo.com/v3.0"
-JAMENDO_CLIENT_ID="2fa42d8a"
+## Tech Stack
 
-# CORS Allowed Origins
-ALLOWED_ORIGINS="http://localhost:5173,https://notify-music-player.vercel.app"
+Express 4.21 / TypeScript 5.8 (ESM) / MongoDB + Mongoose 8.12 / JWT / Brevo / Cloudinary / Zod / Multer / tsx
+
+---
+
+## Quick Start
+
+```bash
+cd backend
+npm install
+cp .env.example .env   # fill in your values
+npm run dev             # http://localhost:5000
 ```
 
 ---
 
-## 🔐 Dual Token Authentication Flow
+## Environment Variables
 
-1. **User Registration / Login (`POST /api/auth/register`, `POST /api/auth/login`)**:
-   - Generates a short-lived **Access Token** (15m expiration) and long-lived **Refresh Token** (7d expiration).
-   - Issues `auth_token` and `refresh_token` HTTP-only, secure, `SameSite=Lax` cookies.
-   - Hashes and stores the refresh token in MongoDB Atlas (`refreshTokenHash`).
-
-2. **Automatic Token Renewal (`POST /api/auth/refresh`)**:
-   - When the 15m access token expires, `apiClient.ts` automatically sends a `POST /api/auth/refresh` request with the HTTP-only refresh token cookie.
-   - The server verifies the refresh token, rotates the refresh token in DB, and issues new cookies seamlessly without disrupting active listening.
-
-3. **Revocation & Logout (`POST /api/auth/logout`)**:
-   - Clears `auth_token` and `refresh_token` cookies and unsets `refreshTokenHash` in MongoDB.
-
----
-
-## 📡 API Reference
-
-### 1. Authentication Endpoints (`/api/auth/*`)
-- `POST /api/auth/register` - Create new user account.
-- `POST /api/auth/login` - Authenticate user & issue cookies.
-- `POST /api/auth/refresh` - Rotate access and refresh tokens.
-- `POST /api/auth/logout` - Clear cookies & revoke refresh session.
-- `GET /api/auth/me` - [Protected] Fetch current authenticated user profile.
-- `POST /api/auth/change-password` - [Protected] Update current password.
-- `POST /api/auth/forgot-password` - Request password reset token.
-- `POST /api/auth/reset-password` - Reset password using reset token.
-- `POST /api/auth/verify-email` - Verify email token.
-
-### 2. User & Cloud Management (`/api/user/*`)
-- `GET /api/user/profile` - Get user account statistics.
-- `PUT /api/user/profile` - Update full name or avatar.
-- `POST /api/user/avatar` - Upload/replace avatar via Cloudinary (multipart `FormData` with field `avatar`). Automatically deletes previous Cloudinary asset.
-- `DELETE /api/user/account` - Cascade delete user account and cloud data.
-
-### 3. User Favorites & Playlists (`/api/user/*`)
-- `GET /api/user/favorites` - Get saved favorite songs.
-- `POST /api/user/favorites` - Add track to favorites.
-- `DELETE /api/user/favorites/:trackId` - Remove track from favorites.
-- `GET /api/user/playlists` - Get user playlists.
-- `POST /api/user/playlists` - Create new playlist.
-- `PUT /api/user/playlists/:id` - Rename or update playlist.
-- `DELETE /api/user/playlists/:id` - Delete playlist.
-- `POST /api/user/playlists/:id/tracks` - Add track to playlist.
-- `DELETE /api/user/playlists/:id/tracks/:trackId` - Remove track from playlist.
-
-### 4. Recently Played & Listening History (`/api/user/*`)
-- `GET /api/user/recently-played` - Fetch recent playback queue.
-- `POST /api/user/recently-played` - Record recently played track.
-- `GET /api/user/history` - Fetch full listening history.
-- `POST /api/user/history` - Record play timestamp & duration.
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `5000` | Server port |
+| `MONGODB_URI` | — | MongoDB connection string |
+| `MONGODB_DB_NAME` | `notify_music_player` | Database name |
+| `JWT_SECRET` | — | Access token signing key |
+| `JWT_EXPIRES_IN` | `15m` | Access token TTL |
+| `REFRESH_TOKEN_SECRET` | — | Refresh token signing key |
+| `REFRESH_TOKEN_EXPIRES_IN` | `7d` | Refresh token TTL |
+| `COOKIE_SECRET` | — | Cookie signing secret |
+| `BREVO_API_KEY` | — | Brevo transactional email API key |
+| `EMAIL_FROM` | `notifymusicplayer@gmail.com` | Sender email |
+| `EMAIL_FROM_NAME` | `Notify Music` | Sender name |
+| `CLOUDINARY_CLOUD_NAME` | — | Cloudinary cloud name |
+| `CLOUDINARY_API_KEY` | — | Cloudinary API key |
+| `CLOUDINARY_API_SECRET` | — | Cloudinary API secret |
+| `JAMENDO_CLIENT_ID` | — | Jamendo API client ID |
+| `JIOSAAVN_API_URL` | `https://notify-music-api.vercel.app` | JioSaavn proxy URL |
+| `JAMENDO_API_URL` | `https://api.jamendo.com/v3.0` | Jamendo API URL |
+| `ALLOWED_ORIGINS` | `http://localhost:5173,...` | CORS origins |
+| `NODE_ENV` | `development` | `development` or `production` |
 
 ---
 
-## 🛠️ Deployment Instructions
+## API
 
-### Render Backend Deployment
-1. Create a **Web Service** on [Render](https://render.com).
-2. Connect your Git repository.
-3. Build Command: `npm --prefix backend install && npm --prefix backend run build`
-4. Start Command: `node backend/dist/index.js`
-5. Configure Environment Variables in Render Dashboard.
+### Health
 
-### Vercel Frontend Deployment
-1. Connect your repository to [Vercel](https://vercel.com).
-2. Set Build Command: `npm run build`
-3. Output Directory: `dist`
+```
+GET /health → { status, database, environment, uptimeSeconds }
+```
+
+### Auth (`/api/auth`)
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/send-otp` | — | Send verification OTP (rate: 25/15m) |
+| POST | `/resend-otp` | — | Resend OTP (rate: 5/60s) |
+| POST | `/verify-otp` | — | Verify 6-digit OTP (rate: 5/60s) |
+| POST | `/register` | — | Create account (email must be verified) (rate: 25/15m) |
+| POST | `/login` | — | Login (rate: 25/15m) |
+| POST | `/refresh` | — | Refresh + rotate tokens |
+| POST | `/logout` | — | Clear tokens |
+| POST | `/forgot-password` | — | Send reset OTP (rate: 5/15m) |
+| POST | `/verify-reset-otp` | — | Verify reset OTP (rate: 5/60s) |
+| POST | `/resend-reset-otp` | — | Resend reset OTP (rate: 5/60s) |
+| POST | `/reset-password` | — | Set new password (rate: 5/15m) |
+| GET | `/me` | Yes | Get current user |
+| POST | `/change-password` | Yes | Change password |
+
+### User (`/api/user`) — all require auth
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET/PUT | `/profile` | Get/update profile |
+| POST | `/avatar` | Upload avatar (multipart, max 5MB) |
+| DELETE | `/account` | Delete account + all data |
+| GET/POST | `/favorites` | List/add favorites |
+| DELETE | `/favorites/:trackId` | Remove favorite |
+| GET/POST | `/playlists` | List/create playlists |
+| PUT/DELETE | `/playlists/:id` | Update/delete playlist |
+| POST | `/playlists/:id/tracks` | Add track |
+| DELETE | `/playlists/:id/tracks/:trackId` | Remove track |
+| PUT | `/playlists/:id/tracks/reorder` | Reorder tracks |
+| GET/POST | `/recently-played` | List/add |
+| GET/POST | `/history` | List/record listening history |
+| GET/POST/DELETE | `/search-history` | CRUD search history |
+
+### Music (`/api/music`) — no auth required
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/search?q=&limit=` | Search songs (rate limited) |
+| GET | `/trending` | Trending songs |
+| GET | `/song/:id` | Song metadata |
+| GET | `/album/:id` | Album details |
+| GET | `/artist/:id` | Artist details |
+| GET | `/playlist/:id` | Playlist details |
+| GET | `/suggestions/:id` | Related songs |
+
+### Response Format
+
+```json
+{ "success": true, "data": "...", "provider": "jiosaavn" }
+{ "success": false, "error": "Error message" }
+```
+
+---
+
+## Authentication Flow
+
+**Signup:** Send OTP → Verify OTP → Register → Tokens returned as HTTP-only cookies + JSON body.
+
+**Login:** Email + password → bcrypt verify → Tokens set as HTTP-only cookies.
+
+**Token Refresh:** POST `/refresh` with cookie → JWT verify → bcrypt compare stored hash → rotate tokens.
+
+**Forgot Password:** Send reset OTP → Verify OTP → Reset password (invalidates all sessions).
+
+**Remember Me:** Frontend stores access token in `localStorage` (checked) or `sessionStorage` (unchecked). Refresh token always in HTTP-only cookie.
+
+OTPs: 6-digit, bcrypt-hashed, 10-min expiry, 5 max attempts.
+
+---
+
+## Deployment (Render)
+
+| Setting | Value |
+|---|---|
+| **Build** | `npm --prefix backend install && npm --prefix backend run build` |
+| **Start** | `node backend/dist/index.js` |
+
+Set all env vars via Render Dashboard. Cookies become `secure: true` automatically in production.
+
+---
+
+## License
+
+MIT

@@ -10,6 +10,7 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
+    "@getbrevo/brevo": "^6.0.2",
     "axios": "^1.8.2",
     "bcrypt": "^5.1.1",
     "cloudinary": "^2.5.1",

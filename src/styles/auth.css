@@ -196,6 +196,15 @@
   transform: scale(0.98);
 }
 
+.user-dropdown-item.text-danger {
+  color: #f87171;
+}
+
+.user-dropdown-item.text-danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
 .user-dropdown-cta {
   display: flex;
   align-items: center;
@@ -564,6 +573,7 @@
   gap: 0.5rem;
   box-shadow: 0 8px 24px rgba(29, 185, 84, 0.35);
   outline: none;
+  filter: grayscale(0.15);
 }
 
 .auth-glass-btn:hover:not(:disabled) {
@@ -577,9 +587,11 @@
 }
 
 .auth-glass-btn:disabled {
-  opacity: 0.65;
+  opacity: 0.5;
   cursor: not-allowed;
-  transform: none;
+  transform: none !important;
+  box-shadow: none !important;
+  filter: grayscale(0.4);
 }
 
 /* Card Flip Trigger Prompt */
@@ -631,15 +643,19 @@
 .auth-alert {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
+  gap: 0.7rem;
+  padding: 0.7rem 0.9rem;
   border-radius: 12px;
   font-size: 0.85rem;
   font-weight: 500;
   line-height: 1.4;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.15rem;
   width: 100%;
   box-sizing: border-box;
+}
+
+.auth-alert svg {
+  flex-shrink: 0;
 }
 
 .auth-alert-error {
@@ -664,4 +680,252 @@
 .auth-alert-info svg {
   color: #3b82f6;
   flex-shrink: 0;
+}
+
+/* ==========================================================================
+   OTP Input (6 Boxes)
+   ========================================================================== */
+.otp-input-wrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.otp-input-container {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  width: 100%;
+}
+
+.otp-input-box {
+  width: 48px;
+  height: 56px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  color: #ffffff;
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  text-align: center;
+  outline: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  caret-color: var(--primary);
+}
+
+.otp-input-box:focus {
+  border-color: var(--primary);
+  background: rgba(0, 0, 0, 0.65);
+  box-shadow: 0 0 0 3px rgba(29, 185, 84, 0.2), 0 4px 12px rgba(29, 185, 84, 0.1);
+  transform: translateY(-3px);
+}
+
+.otp-input-box.is-invalid {
+  border-color: var(--error, #ef4444);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
+.otp-input-box:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+
+.otp-error {
+  text-align: center;
+  justify-content: center;
+  color: #f87171;
+  font-size: 0.82rem;
+}
+
+/* ==========================================================================
+   OTP Step & Forgot Password
+   ========================================================================== */
+.otp-step-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  align-items: center;
+}
+
+.forgot-password-instruction {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  text-align: center;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.forgot-password-instruction strong {
+  color: #ffffff;
+}
+
+.otp-resend-container {
+  width: 100%;
+  text-align: center;
+  margin-top: 0.25rem;
+}
+
+.otp-resend-timer {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.otp-resend-btn {
+  background: none;
+  border: none;
+  color: var(--primary-light);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.4rem 0.8rem;
+  transition: all 0.2s ease;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.otp-resend-btn:hover:not(:disabled) {
+  color: var(--primary-hover);
+  background: rgba(29, 185, 84, 0.08);
+  text-decoration: underline;
+}
+
+.otp-resend-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+
+/* ==========================================================================
+   Email Verified Banner
+   ========================================================================== */
+.email-verified-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  background: rgba(29, 185, 84, 0.12);
+  border: 1px solid rgba(29, 185, 84, 0.35);
+  border-radius: 12px;
+  color: #4ade80;
+  font-size: 0.9rem;
+  font-weight: 600;
+  width: 100%;
+}
+
+/* ==========================================================================
+   Forgot Password Form
+   ========================================================================== */
+.forgot-password-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ==========================================================================
+   Password Strength Indicator
+   ========================================================================== */
+.password-strength-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: -0.25rem;
+}
+
+.password-strength-bars {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.password-strength-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  transition: background 0.3s ease;
+}
+
+.password-strength-bar.strength-weak {
+  background: #ef4444;
+}
+
+.password-strength-bar.strength-fair {
+  background: #f59e0b;
+}
+
+.password-strength-bar.strength-good {
+  background: #3b82f6;
+}
+
+.password-strength-bar.strength-strong {
+  background: #1db954;
+}
+
+.password-strength-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.strength-text {
+  font-weight: 600;
+}
+
+.strength-text.strength-weak { color: #ef4444; }
+.strength-text.strength-fair { color: #f59e0b; }
+.strength-text.strength-good { color: #3b82f6; }
+.strength-text.strength-strong { color: #1db954; }
+
+/* ==========================================================================
+   Spinner & Field Error
+   ========================================================================== */
+.auth-spinner {
+  animation: authSpin 0.8s linear infinite;
+}
+
+@keyframes authSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.auth-field-error {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: #f87171;
+  margin-top: 0.2rem;
+  padding-left: 0.25rem;
+  line-height: 1.3;
+}
+
+.auth-field-error svg {
+  flex-shrink: 0;
+}
+
+/* Mobile Responsiveness for OTP */
+@media (max-width: 480px) {
+  .otp-input-container {
+    gap: 0.4rem;
+  }
+
+  .otp-input-box {
+    width: 42px;
+    height: 50px;
+    font-size: 1.2rem;
+    border-radius: 12px;
+  }
 }

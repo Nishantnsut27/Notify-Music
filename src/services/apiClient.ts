@@ -19,6 +19,8 @@ export interface ApiResponse<T> {
 
 export const API_BASE_URL = (import.meta.env as Record<string, string | undefined>).VITE_API_URL || 'http://localhost:5000';
 
+import { getStoredToken, setStoredToken, removeStoredToken, isRememberMe } from './tokenStorage';
+
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
@@ -37,13 +39,13 @@ async function refreshAccessToken(): Promise<boolean> {
       });
       const data = await res.json();
       if (res.ok && data.token) {
-        localStorage.setItem('notify_auth_token', data.token);
+        setStoredToken(data.token, isRememberMe());
         return true;
       }
-      localStorage.removeItem('notify_auth_token');
+      removeStoredToken();
       return false;
     } catch {
-      localStorage.removeItem('notify_auth_token');
+      removeStoredToken();
       return false;
     } finally {
       isRefreshing = false;
@@ -62,7 +64,7 @@ export async function fetchJson<T>(
   hasRefreshedToken = false
 ): Promise<T> {
   try {
-    const savedToken = localStorage.getItem('notify_auth_token');
+    const savedToken = getStoredToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options?.headers as Record<string, string>),

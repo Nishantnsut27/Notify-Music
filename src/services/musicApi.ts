@@ -7,7 +7,7 @@ const searchCache = new Map<string, { timestamp: number; tracks: Track[] }>();
 const CACHE_TTL_MS = 300000;
 
 export class MusicAPI {
-  static async searchTracks(query: string, limit = PLAYER_DEFAULTS.DEFAULT_SEARCH_LIMIT, signal?: AbortSignal): Promise<Track[]> {
+  static async searchTracks(query: string, limit: number = PLAYER_DEFAULTS.DEFAULT_SEARCH_LIMIT, signal?: AbortSignal): Promise<Track[]> {
     if (!query || !query.trim()) return [];
 
     const cacheKey = `${query.trim().toLowerCase()}:${limit}`;
@@ -35,7 +35,7 @@ export class MusicAPI {
     }
   }
 
-  static async getTrendingTracks(limit = PLAYER_DEFAULTS.DEFAULT_TRENDING_LIMIT): Promise<Track[]> {
+  static async getTrendingTracks(limit: number = PLAYER_DEFAULTS.DEFAULT_TRENDING_LIMIT): Promise<Track[]> {
     try {
       const url = `${API_ENDPOINTS.TRENDING}?limit=${limit}`;
       const body = await fetchJson<ApiResponse<Track[]>>(url);
@@ -95,11 +95,11 @@ export class MusicAPI {
     }
   }
 
-  static async getTracksByGenre(genre: string, limit = PLAYER_DEFAULTS.DEFAULT_SEARCH_LIMIT): Promise<Track[]> {
+  static async getTracksByGenre(genre: string, limit: number = PLAYER_DEFAULTS.DEFAULT_SEARCH_LIMIT): Promise<Track[]> {
     return this.searchTracks(genre, limit);
   }
 
-  static async getArtistTracks(artistName: string, limit = 30): Promise<Track[]> {
+  static async getArtistTracks(artistName: string, limit: number = 30): Promise<Track[]> {
     const cacheKey = `artist:${artistName.toLowerCase()}:${limit}`;
     const cached = searchCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -111,7 +111,7 @@ export class MusicAPI {
     return filtered;
   }
 
-  static async getAlbumTracks(albumName: string, artistName?: string, limit = 30): Promise<Track[]> {
+  static async getAlbumTracks(albumName: string, artistName?: string, limit: number = 30): Promise<Track[]> {
     const cacheKey = `album:${albumName.toLowerCase()}:${artistName?.toLowerCase() || ''}:${limit}`;
     const cached = searchCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -154,7 +154,7 @@ export class MusicAPI {
     return result;
   }
 
-  static async getRecommendations(track: Track, excludeIds: Set<string> = new Set(), limit = 10): Promise<Track[]> {
+  static async getRecommendations(track: Track, excludeIds: Set<string> = new Set(), limit: number = 10): Promise<Track[]> {
     const genres = track.musicinfo?.tags?.genres || [];
     const searches: Promise<Track[]>[] = [];
 

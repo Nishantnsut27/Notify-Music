@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { authApi, type UserProfile } from '../services/authApi';
 import { ApiError } from '../services/apiClient';
+import { getStoredToken, setStoredToken, removeStoredToken } from '../services/tokenStorage';
 
 interface AuthState {
   user: UserProfile | null;
@@ -10,18 +11,16 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
 
-  login: (data: { email: string; password: string }) => Promise<boolean>;
+  login: (data: { email: string; password: string; rememberMe?: boolean }) => Promise<boolean>;
   signup: (data: { fullName: string; email: string; password: string }) => Promise<boolean>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   clearError: () => void;
 }
 
-const TOKEN_KEY = 'notify_auth_token';
-
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  token: localStorage.getItem(TOKEN_KEY),
+  token: getStoredToken(),
   isAuthenticated: false,
   isInitialized: false,
   isLoading: false,
@@ -32,11 +31,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const response = await authApi.login(credentials);
       if (response.token) {
-        localStorage.setItem(TOKEN_KEY, response.token);
+        setStoredToken(response.token, credentials.rememberMe || false);
       }
       set({
         user: response.user,
-        token: response.token || localStorage.getItem(TOKEN_KEY),
+        token: response.token || getStoredToken(),
         isAuthenticated: true,
         isLoading: false,
         error: null,
@@ -63,11 +62,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const response = await authApi.register(credentials);
       if (response.token) {
-        localStorage.setItem(TOKEN_KEY, response.token);
+        setStoredToken(response.token, true);
       }
       set({
         user: response.user,
-        token: response.token || localStorage.getItem(TOKEN_KEY),
+        token: response.token || getStoredToken(),
         isAuthenticated: true,
         isLoading: false,
         error: null,
@@ -96,7 +95,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       // Ignore network errors on logout
     } finally {
-      localStorage.removeItem(TOKEN_KEY);
+      removeStoredToken();
       set({
         user: null,
         token: null,
@@ -104,7 +103,6 @@ export const useAuthStore = create<AuthState>((set) => ({
         isLoading: false,
         error: null,
       });
-      // Clear personal user data from memory on logout
       import('./playerStore').then(({ usePlayerStore }) => {
         usePlayerStore.setState({
           favorites: [],
@@ -125,14 +123,12 @@ export const useAuthStore = create<AuthState>((set) => ({
         isInitialized: true,
         error: null,
       });
-      // Dynamically import playerStore to prevent circular reference
       import('./playerStore').then(({ usePlayerStore }) => {
         usePlayerStore.getState().syncCloudUserData();
       });
       return;
     } catch {
-      // Token invalid or unauthenticated session
-      localStorage.removeItem(TOKEN_KEY);
+      removeStoredToken();
     }
     set({
       user: null,
@@ -140,7 +136,6 @@ export const useAuthStore = create<AuthState>((set) => ({
       isAuthenticated: false,
       isInitialized: true,
     });
-    // Clear user data if session invalid
     import('./playerStore').then(({ usePlayerStore }) => {
       usePlayerStore.setState({
         favorites: [],

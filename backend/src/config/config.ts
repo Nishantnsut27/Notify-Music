@@ -27,7 +27,12 @@ export const config = {
   rateLimitMetadataMax: parseInt(process.env.RATE_LIMIT_METADATA_MAX || '600', 10),
   slowDownSearchDelayAfter: parseInt(process.env.SLOW_DOWN_SEARCH_DELAY_AFTER || '100', 10),
   slowDownSearchDelayMs: parseInt(process.env.SLOW_DOWN_SEARCH_DELAY_MS || '500', 10),
-  cacheTtlMs: parseInt(process.env.CACHE_TTL_MS || '300000', 10)
+  cacheTtlMs: parseInt(process.env.CACHE_TTL_MS || '300000', 10),
+
+  // Brevo Email Configuration
+  brevoApiKey: process.env.BREVO_API_KEY || '',
+  emailFrom: process.env.EMAIL_FROM || 'notifymusicplayer@gmail.com',
+  emailFromName: process.env.EMAIL_FROM_NAME || 'Notify Music',
 };
 
 // Configure Cloudinary SDK

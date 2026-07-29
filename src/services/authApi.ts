@@ -22,10 +22,12 @@ export interface AuthResponse {
   error?: string;
 }
 
+interface OtpResponse {
+  success: boolean;
+  message: string;
+}
+
 export const authApi = {
-  /**
-   * Register a new user account
-   */
   async register(data: { fullName: string; email: string; password: string }): Promise<AuthResponse> {
     return fetchJson<AuthResponse>(`${AUTH_BASE_URL}/register`, {
       method: 'POST',
@@ -33,31 +35,71 @@ export const authApi = {
     });
   },
 
-  /**
-   * Log in user
-   */
-  async login(data: { email: string; password: string }): Promise<AuthResponse> {
+  async login(data: { email: string; password: string; rememberMe?: boolean }): Promise<AuthResponse> {
     return fetchJson<AuthResponse>(`${AUTH_BASE_URL}/login`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
-  /**
-   * Log out user
-   */
   async logout(): Promise<{ success: boolean; message: string }> {
     return fetchJson<{ success: boolean; message: string }>(`${AUTH_BASE_URL}/logout`, {
       method: 'POST',
     });
   },
 
-  /**
-   * Fetch current authenticated user session
-   */
   async getCurrentUser(): Promise<AuthResponse> {
     return fetchJson<AuthResponse>(`${AUTH_BASE_URL}/me`, {
       method: 'GET',
+    });
+  },
+
+  async sendOtp(data: { fullName: string; email: string; password: string }): Promise<OtpResponse> {
+    return fetchJson<OtpResponse>(`${AUTH_BASE_URL}/send-otp`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async resendOtp(data: { email: string }): Promise<OtpResponse> {
+    return fetchJson<OtpResponse>(`${AUTH_BASE_URL}/resend-otp`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async verifyOtp(data: { email: string; otp: string }): Promise<OtpResponse> {
+    return fetchJson<OtpResponse>(`${AUTH_BASE_URL}/verify-otp`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async forgotPassword(data: { email: string }): Promise<OtpResponse> {
+    return fetchJson<OtpResponse>(`${AUTH_BASE_URL}/forgot-password`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async verifyResetOtp(data: { email: string; otp: string }): Promise<OtpResponse> {
+    return fetchJson<OtpResponse>(`${AUTH_BASE_URL}/verify-reset-otp`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async resendResetOtp(data: { email: string }): Promise<OtpResponse> {
+    return fetchJson<OtpResponse>(`${AUTH_BASE_URL}/resend-reset-otp`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async resetPassword(data: { email: string; newPassword: string }): Promise<OtpResponse> {
+    return fetchJson<OtpResponse>(`${AUTH_BASE_URL}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   },
 };

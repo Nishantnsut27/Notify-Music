@@ -31,9 +31,14 @@ export const VIEWS = {
 
 export type ViewType = (typeof VIEWS)[keyof typeof VIEWS];
 
-export const PLAYER_DEFAULTS = {
+export const PLAYER_DEFAULTS: {
+  DEFAULT_VOLUME: number;
+  SEARCH_DEBOUNCE_MS: number;
+  DEFAULT_SEARCH_LIMIT: number;
+  DEFAULT_TRENDING_LIMIT: number;
+} = {
   DEFAULT_VOLUME: 80,
   SEARCH_DEBOUNCE_MS: 500,
   DEFAULT_SEARCH_LIMIT: 20,
   DEFAULT_TRENDING_LIMIT: 25,
-} as const;
+};

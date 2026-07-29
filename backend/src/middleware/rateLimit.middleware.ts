@@ -44,12 +44,34 @@ export const healthLimiter = rateLimit({
 });
 
 export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes window
-  max: 25, // limit each IP to 25 authentication requests per window
+  windowMs: 15 * 60 * 1000,
+  max: 25,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     success: false,
     error: 'Too many authentication attempts. Please try again after 15 minutes.'
+  }
+});
+
+export const otpLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Too many OTP requests. Please wait before trying again.'
+  }
+});
+
+export const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Too many password reset attempts. Please try again after 15 minutes.'
   }
 });

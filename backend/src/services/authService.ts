@@ -3,6 +3,7 @@ import { User, IUser } from '../models/user.model.js';
 import { hashPassword, comparePassword } from '../utils/password.utils.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/token.utils.js';
 import { AppError } from '../utils/AppError.js';
+import { EmailService } from './emailService.js';
 
 export interface RegisterDTO {
   fullName: string;
@@ -28,10 +29,14 @@ export interface SanitizedUser {
   createdAt: Date;
 }
 
+function generateOtp(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_EXPIRY_MS = 10 * 60 * 1000;
+
 export class AuthService {
-  /**
-   * Helper to format sanitized user response (omitting sensitive fields like password & token hashes)
-   */
   public static sanitizeUser(user: IUser): SanitizedUser {
     return {
       id: user._id.toString(),
@@ -47,10 +52,7 @@ export class AuthService {
     };
   }
 
-  /**
-   * Register new user account
-   */
-  public static async registerUser(data: RegisterDTO): Promise<{ user: SanitizedUser; accessToken: string; refreshToken: string }> {
+  static async sendVerificationOtp(data: { fullName: string; email: string; password: string }): Promise<void> {
     const normalizedEmail = data.email.toLowerCase().trim();
 
     const existingUser = await User.findOne({ email: normalizedEmail });
@@ -58,35 +60,121 @@ export class AuthService {
       throw new AppError('An account with this email address is already registered.', 400);
     }
 
-    const hashedPassword = await hashPassword(data.password);
+    const otp = generateOtp();
+    const otpHash = await hashPassword(otp);
 
-    const newUser = new User({
-      fullName: data.fullName.trim(),
-      email: normalizedEmail,
-      password: hashedPassword,
-      role: 'user',
-      accountStatus: 'active',
-      isEmailVerified: false,
-    });
+    await User.findOneAndUpdate(
+      { email: normalizedEmail },
+      {
+        fullName: data.fullName.trim(),
+        email: normalizedEmail,
+        password: await hashPassword(data.password),
+        verificationOtpHash: otpHash,
+        verificationOtpExpiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
+        verificationAttempts: 0,
+        role: 'user',
+        accountStatus: 'active',
+        isEmailVerified: false,
+      },
+      { upsert: true, setDefaultsOnInsert: true }
+    );
 
-    const accessToken = generateAccessToken(newUser._id.toString(), newUser.role);
-    const refreshToken = generateRefreshToken(newUser._id.toString(), newUser.role);
+    await EmailService.sendVerificationOtp(normalizedEmail, otp);
+  }
 
-    newUser.refreshTokenHash = await hashPassword(refreshToken);
-    await newUser.save();
+  static async resendVerificationOtp(email: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase().trim();
 
-    console.log(`👤 [Auth] User registered: ${newUser.email} (${newUser._id})`);
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      throw new AppError('No registration in progress for this email.', 400);
+    }
+    if (user.isEmailVerified) {
+      throw new AppError('This email is already verified.', 400);
+    }
+
+    const otp = generateOtp();
+    const otpHash = await hashPassword(otp);
+
+    user.verificationOtpHash = otpHash;
+    user.verificationOtpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+    user.verificationAttempts = 0;
+    await user.save();
+
+    await EmailService.sendVerificationOtp(normalizedEmail, otp);
+  }
+
+  static async verifyEmailOtp(email: string, otp: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: normalizedEmail }).select(
+      '+verificationOtpHash +verificationOtpExpiresAt +verificationAttempts'
+    );
+
+    if (!user || !user.verificationOtpHash || !user.verificationOtpExpiresAt) {
+      throw new AppError('No verification code was requested. Please request a new one.', 400);
+    }
+
+    if ((user.verificationAttempts ?? 0) >= OTP_MAX_ATTEMPTS) {
+      user.verificationOtpHash = undefined;
+      user.verificationOtpExpiresAt = undefined;
+      user.verificationAttempts = 0;
+      await user.save();
+      throw new AppError('Too many incorrect attempts. Please request a new code.', 429);
+    }
+
+    if (new Date() > user.verificationOtpExpiresAt) {
+      user.verificationOtpHash = undefined;
+      user.verificationOtpExpiresAt = undefined;
+      user.verificationAttempts = 0;
+      await user.save();
+      throw new AppError('Verification code has expired. Please request a new one.', 400);
+    }
+
+    const isValid = await comparePassword(otp, user.verificationOtpHash);
+    if (!isValid) {
+      user.verificationAttempts = (user.verificationAttempts || 0) + 1;
+      await user.save();
+      const remaining = OTP_MAX_ATTEMPTS - user.verificationAttempts;
+      throw new AppError(
+        remaining > 0
+          ? `Invalid verification code. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.`
+          : 'Too many incorrect attempts. Please request a new code.',
+        400
+      );
+    }
+
+    user.isEmailVerified = true;
+    user.verificationOtpHash = undefined;
+    user.verificationOtpExpiresAt = undefined;
+    user.verificationAttempts = 0;
+    await user.save();
+  }
+
+  public static async registerUser(data: RegisterDTO): Promise<{ user: SanitizedUser; accessToken: string; refreshToken: string }> {
+    const normalizedEmail = data.email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: normalizedEmail }).select('+password');
+    if (!user) {
+      throw new AppError('Please complete email verification first.', 400);
+    }
+    if (!user.isEmailVerified) {
+      throw new AppError('Email is not verified. Please verify your email first.', 400);
+    }
+
+    const accessToken = generateAccessToken(user._id.toString(), user.role);
+    const refreshToken = generateRefreshToken(user._id.toString(), user.role);
+
+    user.refreshTokenHash = await hashPassword(refreshToken);
+    await user.save();
 
     return {
-      user: this.sanitizeUser(newUser),
+      user: this.sanitizeUser(user),
       accessToken,
       refreshToken,
     };
   }
 
-  /**
-   * Login user
-   */
   public static async loginUser(data: LoginDTO): Promise<{ user: SanitizedUser; accessToken: string; refreshToken: string }> {
     const normalizedEmail = data.email.toLowerCase().trim();
 
@@ -112,8 +200,6 @@ export class AuthService {
     user.lastLoginAt = new Date();
     await user.save();
 
-    console.log(`🔑 [Auth] User logged in: ${user.email} (${user._id})`);
-
     return {
       user: this.sanitizeUser(user),
       accessToken,
@@ -121,9 +207,6 @@ export class AuthService {
     };
   }
 
-  /**
-   * Rotate and refresh access token using valid refresh token
-   */
   public static async refreshToken(token: string): Promise<{ accessToken: string; refreshToken: string; user: SanitizedUser }> {
     let payload;
     try {
@@ -155,16 +238,10 @@ export class AuthService {
     };
   }
 
-  /**
-   * Invalidate user refresh token on logout
-   */
   public static async revokeRefreshToken(userId: string): Promise<void> {
     await User.findByIdAndUpdate(userId, { $unset: { refreshTokenHash: 1 } });
   }
 
-  /**
-   * Change user password
-   */
   public static async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
     const user = await User.findById(userId).select('+password');
     if (!user || !user.password) {
@@ -178,16 +255,120 @@ export class AuthService {
 
     user.password = await hashPassword(newPassword);
     await user.save();
-    console.log(`🔒 [Auth] Password changed for user: ${user._id}`);
   }
 
-  /**
-   * Generate password reset token
-   */
+  static async sendResetOtp(email: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      return;
+    }
+
+    const otp = generateOtp();
+    const otpHash = await hashPassword(otp);
+
+    user.resetOtpHash = otpHash;
+    user.resetOtpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+    user.resetAttempts = 0;
+    await user.save();
+
+    await EmailService.sendPasswordResetOtp(normalizedEmail, otp);
+  }
+
+  static async verifyResetOtp(email: string, otp: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: normalizedEmail }).select(
+      '+resetOtpHash +resetOtpExpiresAt +resetAttempts'
+    );
+
+    if (!user || !user.resetOtpHash || !user.resetOtpExpiresAt) {
+      throw new AppError('No reset code was requested. Please request a new one.', 400);
+    }
+
+    if ((user.resetAttempts ?? 0) >= OTP_MAX_ATTEMPTS) {
+      user.resetOtpHash = undefined;
+      user.resetOtpExpiresAt = undefined;
+      user.resetAttempts = 0;
+      await user.save();
+      throw new AppError('Too many incorrect attempts. Please request a new code.', 429);
+    }
+
+    if (new Date() > user.resetOtpExpiresAt) {
+      user.resetOtpHash = undefined;
+      user.resetOtpExpiresAt = undefined;
+      user.resetAttempts = 0;
+      await user.save();
+      throw new AppError('Reset code has expired. Please request a new one.', 400);
+    }
+
+    const isValid = await comparePassword(otp, user.resetOtpHash);
+    if (!isValid) {
+      user.resetAttempts = (user.resetAttempts || 0) + 1;
+      await user.save();
+      const remaining = OTP_MAX_ATTEMPTS - user.resetAttempts;
+      throw new AppError(
+        remaining > 0
+          ? `Invalid reset code. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.`
+          : 'Too many incorrect attempts. Please request a new code.',
+        400
+      );
+    }
+
+    user.resetOtpHash = undefined;
+    user.resetOtpExpiresAt = undefined;
+    user.resetAttempts = 0;
+    await user.save();
+  }
+
+  static async resendResetOtp(email: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      throw new AppError('No account found with this email.', 400);
+    }
+
+    const otp = generateOtp();
+    const otpHash = await hashPassword(otp);
+
+    user.resetOtpHash = otpHash;
+    user.resetOtpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+    user.resetAttempts = 0;
+    await user.save();
+
+    await EmailService.sendPasswordResetOtp(normalizedEmail, otp);
+  }
+
+  public static async resetPassword(email: string, newPassword: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: normalizedEmail }).select('+password');
+    if (!user) {
+      throw new AppError('User not found.', 404);
+    }
+
+    user.password = await hashPassword(newPassword);
+
+    if (user.refreshTokenHash) {
+      user.refreshTokenHash = undefined;
+    }
+
+    await user.save();
+  }
+
+  public static async getUserProfile(userId: string): Promise<SanitizedUser> {
+    const user = await User.findById(userId);
+    if (!user) {
+      throw new AppError('User profile not found.', 404);
+    }
+    return this.sanitizeUser(user);
+  }
+
   public static async requestPasswordReset(email: string): Promise<{ resetToken: string }> {
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user) {
-      // Prevent user enumeration by returning pseudo-success token
       return { resetToken: crypto.randomBytes(32).toString('hex') };
     }
 
@@ -195,18 +376,13 @@ export class AuthService {
     const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
 
     user.passwordResetToken = hashedResetToken;
-    user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour expiration
+    user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000);
     await user.save();
-
-    console.log(`📧 [Auth] Generated password reset token for: ${user.email}`);
 
     return { resetToken };
   }
 
-  /**
-   * Reset password with reset token
-   */
-  public static async resetPassword(resetToken: string, newPassword: string): Promise<void> {
+  public static async resetPasswordWithToken(resetToken: string, newPassword: string): Promise<void> {
     const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
 
     const user = await User.findOne({
@@ -222,13 +398,8 @@ export class AuthService {
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
     await user.save();
-
-    console.log(`✅ [Auth] Password successfully reset for: ${user.email}`);
   }
 
-  /**
-   * Generate Email Verification token
-   */
   public static async sendVerificationToken(userId: string): Promise<{ verificationToken: string }> {
     const user = await User.findById(userId);
     if (!user) {
@@ -239,15 +410,12 @@ export class AuthService {
     const hashedToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
 
     user.emailVerificationToken = hashedToken;
-    user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await user.save();
 
     return { verificationToken };
   }
 
-  /**
-   * Verify email token
-   */
   public static async verifyEmail(token: string): Promise<SanitizedUser> {
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
 
@@ -265,18 +433,6 @@ export class AuthService {
     user.emailVerificationExpires = undefined;
     await user.save();
 
-    console.log(`✉️ [Auth] Email verified for user: ${user.email}`);
-    return this.sanitizeUser(user);
-  }
-
-  /**
-   * Get user profile
-   */
-  public static async getUserProfile(userId: string): Promise<SanitizedUser> {
-    const user = await User.findById(userId);
-    if (!user) {
-      throw new AppError('User profile not found.', 404);
-    }
     return this.sanitizeUser(user);
   }
 }
