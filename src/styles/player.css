@@ -64,7 +64,7 @@
     rgba(29, 185, 84, 0.1) 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-color: rgba(29, 185, 84, 0.6);
+  border-color: rgba(29, 185, 84, 0.5);
   transform: translateX(10px) scale(1.015);
   box-shadow: 0 8px 30px rgba(29, 185, 84, 0.3);
 }
@@ -224,24 +224,20 @@
   max-width: 400px;
 }
 
-.track-item-modern.blurred,
-.track-list-container-modern.has-hovered-track .track-item-modern:not(.hovered) {
-  opacity: 0.4;
-  filter: blur(4px);
-  transform: scale(0.985);
+.track-item-modern.blurred {
   transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .track-item-modern:hover,
 .track-item-modern.hovered,
 .track-list-container-modern.has-hovered-track .track-item-modern.hovered {
-  opacity: 1;
+  opacity: 1 !important;
   filter: none !important;
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-color: rgba(29, 185, 84, 0.6);
-  transform: translateX(10px) translateY(-2px) scale(1.02);
+  border-color: rgba(29, 185, 84, 0.5);
+  transform: translateX(10px) translateY(-2px) scale(1.02) !important;
   box-shadow: 
     0 12px 35px rgba(0, 0, 0, 0.6),
     0 0 20px rgba(29, 185, 84, 0.3),
@@ -292,7 +288,7 @@
   justify-content: center;
   cursor: pointer;
   transition: all 0.3s var(--smooth);
-  box-shadow: 0 4px 15px rgba(29, 185, 84, 0.4);
+  box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3);
 }
 
 .play-button-modern:hover {
@@ -314,7 +310,7 @@
   background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
   border-radius: 6px;
-  border: 1px solid rgba(29, 185, 84, 0.4);
+  border: 1px solid rgba(29, 185, 84, 0.3);
   z-index: 5;
   transition: all 0.3s ease;
   overflow: hidden;
@@ -554,7 +550,7 @@
 .control-btn:hover {
   color: #1db954;
   background: linear-gradient(135deg, rgba(29, 185, 84, 0.2), rgba(29, 185, 84, 0.1));
-  border-color: rgba(29, 185, 84, 0.4);
+  border-color: rgba(29, 185, 84, 0.3);
   transform: scale(1.08);
   box-shadow: 0 8px 25px rgba(29, 185, 84, 0.3);
 }
@@ -780,7 +776,7 @@
 
 .volume-thumb:hover {
   transform: translate(-50%, -50%) scale(1.2);
-  box-shadow: 0 4px 12px rgba(29, 185, 84, 0.4);
+  box-shadow: 0 4px 12px rgba(29, 185, 84, 0.3);
 }
 
 .volume-indicator {

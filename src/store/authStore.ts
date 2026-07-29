@@ -110,7 +110,6 @@ export const useAuthStore = create<AuthState>((set) => ({
           favorites: [],
           playlists: [],
           recentlyPlayed: [],
-          listeningHistory: [],
           currentView: 'search',
         });
       });
@@ -147,7 +146,6 @@ export const useAuthStore = create<AuthState>((set) => ({
         favorites: [],
         playlists: [],
         recentlyPlayed: [],
-        listeningHistory: [],
         currentView: 'search',
       });
     });

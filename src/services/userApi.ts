@@ -128,7 +128,7 @@ export const userApi = {
 
   // Profile Management & Cloudinary Avatar Upload
   async updateProfile(data: { fullName?: string; avatar?: string }) {
-    const res = await fetchJson<{ success: boolean; user: any }>(`${USER_BASE_URL}/profile`, {
+    const res = await fetchJson<{ success: boolean; user: Record<string, unknown> }>(`${USER_BASE_URL}/profile`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });

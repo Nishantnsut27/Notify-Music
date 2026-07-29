@@ -39,7 +39,7 @@ export function SearchBar() {
   const sequenceRef = useRef(0);
   const debouncedQuery = useDebounce(query, 300);
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
-  const { setResults, setLoading, setError, clearResults, setQuery: setStoreQuery } = usePlayerStore();
+  const { setResults, setLoading, setError, clearResults, setQuery: setStoreQuery, currentView, setCurrentView } = usePlayerStore();
 
   const loadHistory = useCallback(async () => {
     const items = isAuthenticated ? await userApi.getSearchHistory().catch(() => []) : readGuestHistory();
@@ -71,6 +71,7 @@ export function SearchBar() {
     const controller = new AbortController();
     requestRef.current = controller;
     const requestId = ++sequenceRef.current;
+    if (currentView !== 'search') setCurrentView('search');
     setIsSearching(true); setLoading(true); setError(null); setStoreQuery(clean);
     try {
       const tracks = await MusicAPI.searchTracks(clean, undefined, controller.signal);
@@ -85,7 +86,7 @@ export function SearchBar() {
     } finally {
       if (requestId === sequenceRef.current) { setLoading(false); setIsSearching(false); }
     }
-  }, [clearResults, saveHistory, setError, setLoading, setResults, setStoreQuery]);
+  }, [clearResults, saveHistory, setError, setLoading, setResults, setStoreQuery, currentView, setCurrentView]);
 
   useEffect(() => {
     if (!debouncedQuery.trim()) { requestRef.current?.abort(); setSuggestions([]); return; }
@@ -95,13 +96,21 @@ export function SearchBar() {
   useEffect(() => {
     const runExternalSearch = (event: Event) => {
       const value = (event as CustomEvent<string>).detail;
-      if (value) { setQuery(value); setIsOpen(false); void performSearch(value); }
+      if (value) {
+        setQuery(value); setIsOpen(false);
+        if (currentView !== 'search') setCurrentView('search');
+        void performSearch(value);
+      }
     };
     window.addEventListener('music-search', runExternalSearch);
     return () => window.removeEventListener('music-search', runExternalSearch);
-  }, [performSearch]);
+  }, [performSearch, currentView, setCurrentView]);
 
-  const selectQuery = (value: string) => { setQuery(value); setIsOpen(false); setActiveIndex(-1); void performSearch(value); };
+  const selectQuery = (value: string) => {
+    setQuery(value); setIsOpen(false); setActiveIndex(-1);
+    if (currentView !== 'search') setCurrentView('search');
+    void performSearch(value);
+  };
   const clearHistory = async () => {
     if (isAuthenticated) await userApi.clearSearchHistory().catch(() => {}); else localStorage.removeItem(HISTORY_KEY);
     setHistory([]);

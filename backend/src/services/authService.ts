@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { User, IUser } from '../models/user.model.js';
 import { hashPassword, comparePassword } from '../utils/password.utils.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/token.utils.js';
+import { AppError } from '../utils/AppError.js';
 
 export interface RegisterDTO {
   fullName: string;
@@ -54,9 +55,7 @@ export class AuthService {
 
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
-      const error = new Error('An account with this email address is already registered.');
-      (error as any).statusCode = 400;
-      throw error;
+      throw new AppError('An account with this email address is already registered.', 400);
     }
 
     const hashedPassword = await hashPassword(data.password);
@@ -94,22 +93,16 @@ export class AuthService {
     const user = await User.findOne({ email: normalizedEmail }).select('+password +refreshTokenHash');
 
     if (!user || !user.password) {
-      const error = new Error('Invalid email or password.');
-      (error as any).statusCode = 401;
-      throw error;
+      throw new AppError('Invalid email or password.', 401);
     }
 
     const isPasswordValid = await comparePassword(data.password, user.password);
     if (!isPasswordValid) {
-      const error = new Error('Invalid email or password.');
-      (error as any).statusCode = 401;
-      throw error;
+      throw new AppError('Invalid email or password.', 401);
     }
 
     if (user.accountStatus !== 'active') {
-      const error = new Error('Your account is currently suspended or inactive.');
-      (error as any).statusCode = 403;
-      throw error;
+      throw new AppError('Your account is currently suspended or inactive.', 403);
     }
 
     const accessToken = generateAccessToken(user._id.toString(), user.role);
@@ -136,23 +129,17 @@ export class AuthService {
     try {
       payload = verifyRefreshToken(token);
     } catch {
-      const error = new Error('Invalid or expired refresh token. Please log in again.');
-      (error as any).statusCode = 401;
-      throw error;
+      throw new AppError('Invalid or expired refresh token. Please log in again.', 401);
     }
 
     const user = await User.findById(payload.userId).select('+refreshTokenHash');
     if (!user || !user.refreshTokenHash) {
-      const error = new Error('User session not found.');
-      (error as any).statusCode = 401;
-      throw error;
+      throw new AppError('User session not found.', 401);
     }
 
     const isMatch = await comparePassword(token, user.refreshTokenHash);
     if (!isMatch) {
-      const error = new Error('Revoked or reused refresh token.');
-      (error as any).statusCode = 401;
-      throw error;
+      throw new AppError('Revoked or reused refresh token.', 401);
     }
 
     const newAccessToken = generateAccessToken(user._id.toString(), user.role);
@@ -181,16 +168,12 @@ export class AuthService {
   public static async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
     const user = await User.findById(userId).select('+password');
     if (!user || !user.password) {
-      const error = new Error('User not found');
-      (error as any).statusCode = 404;
-      throw error;
+      throw new AppError('User not found', 404);
     }
 
     const isMatch = await comparePassword(currentPassword, user.password);
     if (!isMatch) {
-      const error = new Error('Current password is incorrect.');
-      (error as any).statusCode = 400;
-      throw error;
+      throw new AppError('Current password is incorrect.', 400);
     }
 
     user.password = await hashPassword(newPassword);
@@ -232,9 +215,7 @@ export class AuthService {
     }).select('+passwordResetToken +passwordResetExpires');
 
     if (!user) {
-      const error = new Error('Password reset token is invalid or has expired.');
-      (error as any).statusCode = 400;
-      throw error;
+      throw new AppError('Password reset token is invalid or has expired.', 400);
     }
 
     user.password = await hashPassword(newPassword);
@@ -251,9 +232,7 @@ export class AuthService {
   public static async sendVerificationToken(userId: string): Promise<{ verificationToken: string }> {
     const user = await User.findById(userId);
     if (!user) {
-      const error = new Error('User not found');
-      (error as any).statusCode = 404;
-      throw error;
+      throw new AppError('User not found', 404);
     }
 
     const verificationToken = crypto.randomBytes(32).toString('hex');
@@ -278,9 +257,7 @@ export class AuthService {
     });
 
     if (!user) {
-      const error = new Error('Email verification token is invalid or has expired.');
-      (error as any).statusCode = 400;
-      throw error;
+      throw new AppError('Email verification token is invalid or has expired.', 400);
     }
 
     user.isEmailVerified = true;
@@ -298,9 +275,7 @@ export class AuthService {
   public static async getUserProfile(userId: string): Promise<SanitizedUser> {
     const user = await User.findById(userId);
     if (!user) {
-      const error = new Error('User profile not found.');
-      (error as any).statusCode = 404;
-      throw error;
+      throw new AppError('User profile not found.', 404);
     }
     return this.sanitizeUser(user);
   }

@@ -21,13 +21,13 @@
 .btn-primary {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
   color: white;
-  box-shadow: 0 4px 15px rgba(29, 185, 84, 0.4);
+  box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: linear-gradient(135deg, var(--primary-light) 0%, #22c55e 100%);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(29, 185, 84, 0.6);
+  box-shadow: 0 6px 20px rgba(29, 185, 84, 0.5);
 }
 
 .btn-primary:disabled {
@@ -166,7 +166,7 @@
 .search-bar-container:hover,
 .search-bar-container:focus-within {
   background: linear-gradient(135deg, rgba(50, 50, 50, 0.85) 0%, rgba(30, 30, 30, 0.95) 100%);
-  border-color: rgba(29, 185, 84, 0.4);
+  border-color: rgba(29, 185, 84, 0.3);
   transform: translateY(-2px);
   box-shadow: 0 8px 30px rgba(29, 185, 84, 0.2);
 }
@@ -181,13 +181,13 @@
   background: linear-gradient(135deg, #1db954 0%, #1ed760 100%);
   flex-shrink: 0;
   margin-right: 0.5rem;
-  box-shadow: 0 4px 15px rgba(29, 185, 84, 0.4);
+  box-shadow: 0 4px 15px rgba(29, 185, 84, 0.3);
   transition: all 0.3s ease;
 }
 
 .search-bar-container:hover .search-bar-icon-badge,
 .search-bar-container:focus-within .search-bar-icon-badge {
-  box-shadow: 0 6px 20px rgba(29, 185, 84, 0.6);
+  box-shadow: 0 6px 20px rgba(29, 185, 84, 0.5);
   transform: scale(1.05);
 }
 
@@ -390,7 +390,7 @@
 .modern-button:hover {
   transform: translateY(-3px) scale(1.05);
   box-shadow: 
-    0 8px 25px rgba(29, 185, 84, 0.4),
+    0 8px 25px rgba(29, 185, 84, 0.3),
     0 0 0 4px rgba(29, 185, 84, 0.2);
   background: linear-gradient(135deg, var(--primary-light) 0%, #22c55e 100%);
 }
@@ -763,7 +763,7 @@
 .confirm-modal-icon.icon-success {
   background: rgba(29, 185, 84, 0.2);
   color: #1ed760;
-  border: 1px solid rgba(29, 185, 84, 0.4);
+  border: 1px solid rgba(29, 185, 84, 0.3);
   box-shadow: 0 0 15px rgba(29, 185, 84, 0.25);
 }
 
@@ -926,7 +926,7 @@
 
 .toast-badge-success {
   background: linear-gradient(135deg, #1db954 0%, #1ed760 100%);
-  box-shadow: 0 3px 10px rgba(29, 185, 84, 0.4);
+  box-shadow: 0 3px 10px rgba(29, 185, 84, 0.3);
 }
 
 .toast-badge-remove {
@@ -943,7 +943,7 @@
 
 .toast-badge-music {
   background: linear-gradient(135deg, rgba(29, 185, 84, 0.25), rgba(29, 185, 84, 0.1));
-  border: 1px solid rgba(29, 185, 84, 0.4);
+  border: 1px solid rgba(29, 185, 84, 0.3);
   box-shadow: 0 3px 10px rgba(29, 185, 84, 0.3);
 }
 
@@ -1117,6 +1117,403 @@
   gap: 0.75rem;
 }
 
+/* ==========================================================================
+   ARTIST PAGE
+   ========================================================================== */
+
+.artist-page {
+  max-width: 900px;
+}
+
+.artist-header {
+  display: flex;
+  align-items: flex-end;
+  gap: 2rem;
+  margin-bottom: 2.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.artist-image-wrapper {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border: 2px solid rgba(29, 185, 84, 0.3);
+}
+
+.artist-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.artist-image-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(29, 185, 84, 0.2), rgba(18, 18, 18, 0.8));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.artist-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.artist-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+}
+
+.artist-name {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0.5rem 0;
+  line-height: 1.1;
+}
+
+.artist-track-count {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.artist-albums-section {
+  margin-top: 2.5rem;
+}
+
+.artist-albums-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.artist-album-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.artist-album-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+  transform: translateY(-4px);
+  border-color: rgba(29, 185, 84, 0.3);
+}
+
+.artist-album-cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 0.65rem;
+}
+
+.artist-album-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.artist-album-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.artist-album-card:hover .artist-album-overlay {
+  opacity: 1;
+}
+
+.artist-album-overlay svg {
+  width: 36px;
+  height: 36px;
+  color: #1db954;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6));
+}
+
+.artist-album-info h4 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   ALBUM PAGE
+   ========================================================================== */
+
+.album-page {
+  max-width: 900px;
+}
+
+.album-header {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 2.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  align-items: flex-end;
+}
+
+.album-art-wrapper {
+  width: 220px;
+  height: 220px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.album-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.album-art-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(29, 185, 84, 0.15), rgba(18, 18, 18, 0.8));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.album-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.album-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+}
+
+.album-name {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0.5rem 0;
+  line-height: 1.1;
+}
+
+.album-artist-link {
+  display: inline-block;
+  background: none;
+  border: none;
+  color: #1ed760;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.album-artist-link:hover {
+  text-decoration: underline;
+  color: #1db954;
+}
+
+.album-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.album-meta-dot {
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+.album-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+/* ==========================================================================
+   RELATED MUSIC
+   ========================================================================== */
+
+.related-music {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ==========================================================================
+   DISCOVERY SECTIONS
+   ========================================================================== */
+
+.discovery-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ==========================================================================
+   HEADER SKELETON LOADERS
+   ========================================================================== */
+
+.artist-header-skeleton,
+.album-header-skeleton {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 2rem;
+  align-items: flex-end;
+}
+
+.artist-image-skeleton {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.album-art-skeleton {
+  width: 220px;
+  height: 220px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.artist-info-skeleton,
+.album-info-skeleton {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==========================================================================
+   MOBILE ADAPTATIONS
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .artist-header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 1rem;
+  }
+
+  .artist-image-wrapper {
+    width: 160px;
+    height: 160px;
+  }
+
+  .artist-name {
+    font-size: 1.8rem;
+  }
+
+  .artist-albums-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .album-header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 1rem;
+  }
+
+  .album-art-wrapper {
+    width: 180px;
+    height: 180px;
+  }
+
+  .album-name {
+    font-size: 1.5rem;
+  }
+
+  .album-meta {
+    justify-content: center;
+  }
+
+  .album-actions {
+    justify-content: center;
+  }
+
+  .artist-header-skeleton,
+  .album-header-skeleton {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .track-actions-modern .icon-button {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+@media (max-width: 480px) {
+  .artist-image-wrapper {
+    width: 130px;
+    height: 130px;
+  }
+
+  .artist-name {
+    font-size: 1.4rem;
+  }
+
+  .artist-albums-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+
+  .album-art-wrapper {
+    width: 150px;
+    height: 150px;
+  }
+
+  .album-name {
+    font-size: 1.3rem;
+  }
+}
+
+/* ==========================================================================
+   PLAYER CONTROLS - SHUFFLE & REPEAT ACTIVE STATE
+   ========================================================================== */
+
+.control-btn.active {
+  color: #1db954 !important;
+}
+
+.control-btn.active svg {
+  stroke: #1db954;
+}
+
 /* --- Error Display & Boundary --- */
 .error-display-card {
   display: flex;
@@ -1245,7 +1642,7 @@
   background: rgba(29, 185, 84, 0.2);
   border-color: var(--primary);
   color: var(--primary);
-  box-shadow: 0 0 12px rgba(29, 185, 84, 0.4);
+  box-shadow: 0 0 12px rgba(29, 185, 84, 0.3);
 }
 
 .playlist-dropdown-modern {
@@ -1317,7 +1714,7 @@
   border-radius: 4px;
 }
 .playlist-dropdown-list-modern::-webkit-scrollbar-thumb {
-  background: rgba(29, 185, 84, 0.4);
+  background: rgba(29, 185, 84, 0.3);
   border-radius: 4px;
 }
 .playlist-dropdown-list-modern::-webkit-scrollbar-thumb:hover {
@@ -1452,7 +1849,7 @@
   padding: 8px 10px;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(29, 185, 84, 0.4);
+  border: 1px solid rgba(29, 185, 84, 0.3);
   color: #ffffff;
   font-size: 0.825rem;
   outline: none;
@@ -1485,7 +1882,7 @@
 
 .btn-save-modern:hover:not(:disabled) {
   background: #1ed760;
-  box-shadow: 0 0 10px rgba(29, 185, 84, 0.4);
+  box-shadow: 0 0 10px rgba(29, 185, 84, 0.3);
 }
 
 .btn-save-modern:disabled {
@@ -1547,7 +1944,7 @@
   width: 100%;
   max-width: 500px;
   background: linear-gradient(180deg, rgba(24, 24, 28, 0.99) 0%, rgba(12, 12, 16, 0.99) 100%);
-  border-top: 1px solid rgba(29, 185, 84, 0.4);
+  border-top: 1px solid rgba(29, 185, 84, 0.3);
   border-radius: 24px 24px 0 0;
   padding: 1.25rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom, 12px));
   box-shadow: 0 -12px 50px rgba(0, 0, 0, 0.95);
@@ -1654,7 +2051,7 @@
 .playlist-mobile-sheet-item:active,
 .playlist-mobile-sheet-item:hover {
   background: rgba(29, 185, 84, 0.18);
-  border-color: rgba(29, 185, 84, 0.4);
+  border-color: rgba(29, 185, 84, 0.3);
 }
 
 .playlist-mobile-sheet-delete {

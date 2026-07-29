@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { Track, Playlist, PlaylistTrack, PlayerState, SearchState } from '../types/types';
+import type { Track, Playlist, PlaylistTrack, PlayerState, SearchState, Artist, Album, RelatedMusic } from '../types/types';
 import { STORAGE_KEYS, PLAYER_DEFAULTS } from '../config/constants';
 import { userApi } from '../services/userApi';
 import { useAuthStore } from './authStore';
+
+type ViewType = 'search' | 'playlists' | 'favorites' | 'recent' | 'artist' | 'album';
 
 interface PlayerStore extends PlayerState {
   playTrack: (track: Track, queue?: Track[], index?: number) => void;
@@ -20,13 +22,15 @@ interface PlayerStore extends PlayerState {
   seekTo: (time: number) => void;
   toggleShuffle: () => void;
   setRepeatMode: (mode: 'none' | 'one' | 'all') => void;
-  addToQueue: (track: Track) => void;
-  removeFromQueue: (index: number) => void;
-  clearQueue: () => void;
+  autoplayEnabled: boolean;
+  setAutoplayEnabled: (enabled: boolean) => void;
+  recommendations: Track[];
+  setRecommendations: (tracks: Track[]) => void;
+  clearRecommendations: () => void;
 }
 
 interface SearchStore extends SearchState {
- 
+  
   setQuery: (query: string) => void;
   setResults: (results: Track[]) => void;
   setLoading: (loading: boolean) => void;
@@ -39,7 +43,6 @@ interface PlaylistStore {
   playlists: Playlist[];
   favorites: Track[];
   recentlyPlayed: Track[];
-  listeningHistory: Track[];
   
   syncCloudUserData: () => Promise<void>;
   createPlaylist: (name: string) => Playlist;
@@ -56,13 +59,25 @@ interface PlaylistStore {
 
 interface UIStore {
   isSidebarOpen: boolean;
-  currentView: 'search' | 'playlists' | 'favorites' | 'recently-played' | 'history';
+  currentView: ViewType;
   theme: 'light' | 'dark';
+  currentArtistId: string | null;
+  currentArtistName: string | null;
+  currentAlbumId: string | null;
+  currentAlbumName: string | null;
+  artistPageData: Artist | null;
+  albumPageData: Album | null;
+  relatedMusic: RelatedMusic | null;
   
   toggleSidebar: () => void;
   closeSidebar: () => void;
-  setCurrentView: (view: 'search' | 'playlists' | 'favorites' | 'recently-played' | 'history') => void;
+  setCurrentView: (view: ViewType) => void;
   setTheme: (theme: 'light' | 'dark') => void;
+  navigateToArtist: (artistId: string, artistName: string) => void;
+  navigateToAlbum: (albumId: string, albumName: string, artistName?: string) => void;
+  setArtistPageData: (data: Artist | null) => void;
+  setAlbumPageData: (data: Album | null) => void;
+  setRelatedMusic: (data: RelatedMusic | null) => void;
 }
 
 type AppStore = PlayerStore & SearchStore & PlaylistStore & UIStore;
@@ -150,8 +165,8 @@ export const usePlayerStore = create<AppStore>()(
     playbackError: null,
     queue: [],
     currentIndex: -1,
-    isShuffling: false,
-    repeatMode: 'none',
+    isShuffling: loadFromLocalStorage(STORAGE_KEYS.SHUFFLE, false),
+    repeatMode: loadFromLocalStorage(STORAGE_KEYS.REPEAT_MODE, 'none') as 'none' | 'one' | 'all',
 
     query: '',
     results: [],
@@ -162,11 +177,17 @@ export const usePlayerStore = create<AppStore>()(
     playlists: loadFromLocalStorage(STORAGE_KEYS.PLAYLISTS, DEFAULT_PLAYLISTS),
     favorites: loadFromLocalStorage(STORAGE_KEYS.FAVORITES, []),
     recentlyPlayed: [],
-    listeningHistory: [],
 
     isSidebarOpen: false,
     currentView: 'search',
     theme: loadFromLocalStorage(STORAGE_KEYS.THEME, 'dark'),
+    currentArtistId: null,
+    currentArtistName: null,
+    currentAlbumId: null,
+    currentAlbumName: null,
+    artistPageData: null,
+    albumPageData: null,
+    relatedMusic: null,
 
     playTrack: (track: Track, queue?: Track[], index?: number) => {
       const state = get();
@@ -185,7 +206,6 @@ export const usePlayerStore = create<AppStore>()(
         currentTime: 0,
         duration: track.duration || 0,
         recentlyPlayed: updatedRecentlyPlayed,
-        listeningHistory: [track, ...state.listeningHistory].slice(0, 50),
       });
 
       if (useAuthStore.getState().isAuthenticated) {
@@ -200,17 +220,10 @@ export const usePlayerStore = create<AppStore>()(
       const state = get();
       if (state.queue.length === 0) return;
 
-      let nextIndex = state.currentIndex + 1;
-      
-      if (state.isShuffling) {
-        nextIndex = Math.floor(Math.random() * state.queue.length);
-      } else if (nextIndex >= state.queue.length) {
-        if (state.repeatMode === 'all') {
-          nextIndex = 0;
-        } else {
-          set({ isPlaying: false, isBuffering: false });
-          return;
-        }
+      const nextIndex = state.currentIndex + 1;
+      if (nextIndex >= state.queue.length) {
+        set({ isPlaying: false, isBuffering: false });
+        return;
       }
 
       const nextTrack = state.queue[nextIndex];
@@ -231,15 +244,8 @@ export const usePlayerStore = create<AppStore>()(
       const state = get();
       if (state.queue.length === 0) return;
 
-      let prevIndex = state.currentIndex - 1;
-      
-      if (prevIndex < 0) {
-        if (state.repeatMode === 'all') {
-          prevIndex = state.queue.length - 1;
-        } else {
-          return;
-        }
-      }
+      const prevIndex = state.currentIndex - 1;
+      if (prevIndex < 0) return;
 
       const prevTrack = state.queue[prevIndex];
       if (prevTrack) {
@@ -270,34 +276,22 @@ export const usePlayerStore = create<AppStore>()(
     toggleMute: () => set((state) => ({ isMuted: !state.isMuted })),
     seekTo: (time: number) => set({ currentTime: time }),
     
-    toggleShuffle: () => set((state) => ({ isShuffling: !state.isShuffling })),
+    toggleShuffle: () => {
+      const newVal = !get().isShuffling;
+      set({ isShuffling: newVal });
+      saveToLocalStorage(STORAGE_KEYS.SHUFFLE, newVal);
+    },
     
-    setRepeatMode: (mode: 'none' | 'one' | 'all') => set({ repeatMode: mode }),
-
-    addToQueue: (track: Track) => {
-      const state = get();
-      set({ queue: [...state.queue, track] });
+    setRepeatMode: (mode: 'none' | 'one' | 'all') => {
+      set({ repeatMode: mode });
+      saveToLocalStorage(STORAGE_KEYS.REPEAT_MODE, mode);
     },
 
-    removeFromQueue: (index: number) => {
-      const state = get();
-      const newQueue = state.queue.filter((_, i) => i !== index);
-      let newCurrentIndex = state.currentIndex;
-      
-      if (index < state.currentIndex) {
-        newCurrentIndex--;
-      } else if (index === state.currentIndex) {
-        newCurrentIndex = Math.min(newCurrentIndex, newQueue.length - 1);
-      }
-      
-      set({ 
-        queue: newQueue, 
-        currentIndex: newCurrentIndex,
-        currentTrack: newQueue[newCurrentIndex] || null
-      });
-    },
-
-    clearQueue: () => set({ queue: [], currentIndex: -1, currentTrack: null, isPlaying: false, isBuffering: false, playbackError: null }),
+    autoplayEnabled: true,
+    setAutoplayEnabled: (enabled: boolean) => set({ autoplayEnabled: enabled }),
+    recommendations: [],
+    setRecommendations: (tracks: Track[]) => set({ recommendations: tracks }),
+    clearRecommendations: () => set({ recommendations: [] }),
 
     setQuery: (query: string) => set({ query }),
     setResults: (results: Track[]) => set({ results }),
@@ -323,7 +317,7 @@ export const usePlayerStore = create<AppStore>()(
           saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, cloudPlaylists);
         }
         if (cloudRecentlyPlayed && cloudRecentlyPlayed.length > 0) {
-          set({ recentlyPlayed: cloudRecentlyPlayed, listeningHistory: cloudRecentlyPlayed });
+          set({ recentlyPlayed: cloudRecentlyPlayed });
         }
       } catch (err) {
         console.error('Failed to sync cloud user data:', err);
@@ -492,8 +486,22 @@ export const usePlayerStore = create<AppStore>()(
 
     toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
     closeSidebar: () => set({ isSidebarOpen: false }),
-    setCurrentView: (view: 'search' | 'playlists' | 'favorites' | 'recently-played' | 'history') => set({ currentView: view }),
+    setCurrentView: (view: ViewType) => set({
+      currentView: view,
+      currentArtistId: view !== 'artist' ? null : get().currentArtistId,
+      currentAlbumId: view !== 'album' ? null : get().currentAlbumId,
+    }),
     
+    navigateToArtist: (artistId: string, artistName: string) => {
+      set({ currentView: 'artist', currentArtistId: artistId, currentArtistName: artistName, artistPageData: null, relatedMusic: null });
+    },
+    navigateToAlbum: (albumId: string, albumName: string) => {
+      set({ currentView: 'album', currentAlbumId: albumId, currentAlbumName: albumName, albumPageData: null, relatedMusic: null });
+    },
+    setArtistPageData: (data: Artist | null) => set({ artistPageData: data }),
+    setAlbumPageData: (data: Album | null) => set({ albumPageData: data }),
+    setRelatedMusic: (data: RelatedMusic | null) => set({ relatedMusic: data }),
+
     setTheme: (theme: 'light' | 'dark') => {
       set({ theme });
       saveToLocalStorage(STORAGE_KEYS.THEME, theme);

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Innertube, UniversalCache } from 'youtubei.js';
 import { IMusicProvider } from './musicProvider.interface.js';
 import { Song, Album, Artist, Playlist } from '../models/music.model.js';
@@ -66,7 +67,7 @@ export class YouTubeProvider implements IMusicProvider {
             audioUrl = await deciphered;
           }
         }
-      } catch (e) {
+      } catch {
         // Fallback to standard video streaming URL
       }
 

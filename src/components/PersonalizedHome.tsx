@@ -33,7 +33,6 @@ export function PersonalizedHome() {
     playTrack,
     setCurrentView,
     results,
-    queue,
     query,
     isLoading,
     error,
@@ -63,20 +62,12 @@ export function PersonalizedHome() {
     }
   }, [query, isSearching]);
 
-  // Compute trending / fallback / search tracks to feature
+  // Compute trending / search tracks to feature
   const featuredTracks = isSearching
     ? results
-    : trendingTracks.length > 0
-    ? trendingTracks.slice(0, (trendingPage + 1) * 8)
-    : queue.slice(0, (trendingPage + 1) * 8);
+    : trendingTracks.slice(0, (trendingPage + 1) * 8);
 
-  const hasMoreTracks = !isSearching && (
-    results.length > 0 
-      ? false 
-      : trendingTracks.length > 0 
-        ? trendingTracks.length > (trendingPage + 1) * 8 
-        : queue.length > (trendingPage + 1) * 8
-  );
+  const hasMoreTracks = !isSearching && trendingTracks.length > (trendingPage + 1) * 8;
 
   useEffect(() => {
     const loadTrending = async () => {
@@ -219,7 +210,7 @@ export function PersonalizedHome() {
           </div>
 
           <div 
-            onClick={() => setCurrentView('recently-played')} 
+            onClick={() => setCurrentView('recent')} 
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -270,7 +261,7 @@ export function PersonalizedHome() {
         <section className="home-section">
           <div className="section-header-row">
             <h2 className="section-title">Continue Listening</h2>
-            <button onClick={() => setCurrentView('recently-played')} className="see-all-btn">
+            <button onClick={() => setCurrentView('recent')} className="see-all-btn">
               See All
             </button>
           </div>

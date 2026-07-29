@@ -1,10 +1,11 @@
 import { User } from '../models/user.model.js';
-import { PlaylistModel } from '../models/playlist.model.js';
+import { PlaylistModel, ISongSubDoc } from '../models/playlist.model.js';
 import { Favorite } from '../models/favorite.model.js';
 import { RecentlyPlayed } from '../models/recentlyPlayed.model.js';
 import { ListeningHistory } from '../models/listeningHistory.model.js';
 import { SearchHistory } from '../models/searchHistory.model.js';
 import { CloudinaryService } from './cloudinaryService.js';
+import { AppError } from '../utils/AppError.js';
 
 export class UserService {
   public static async getSearchHistory(userId: string, limit = 10) {
@@ -42,29 +43,29 @@ export class UserService {
     }));
   }
 
-  public static async addFavorite(userId: string, trackData: any) {
-    if (!trackData || !trackData.id) {
-      const error = new Error('Invalid track data');
-      (error as any).statusCode = 400;
-      throw error;
+  public static async addFavorite(userId: string, trackData: Record<string, unknown>) {
+    const trackId = String(trackData?.id || '');
+    if (!trackId) {
+      throw new AppError('Invalid track data', 400);
     }
 
+    const d = trackData;
     const favorite = await Favorite.findOneAndUpdate(
-      { user: userId, trackId: trackData.id },
+      { user: userId, trackId },
       {
         user: userId,
-        trackId: trackData.id,
+        trackId,
         trackData: {
-          id: trackData.id,
-          name: trackData.name || 'Untitled Track',
-          duration: trackData.duration || 0,
-          artist_name: trackData.artist_name || 'Unknown Artist',
-          artist_id: trackData.artist_id || '',
-          album_name: trackData.album_name || '',
-          album_id: trackData.album_id || '',
-          image: trackData.image || '',
-          audio: trackData.audio || '',
-          provider: trackData.provider || 'jamendo',
+          id: trackId,
+          name: String(d.name || 'Untitled Track'),
+          duration: Number(d.duration || 0),
+          artist_name: String(d.artist_name || 'Unknown Artist'),
+          artist_id: String(d.artist_id || ''),
+          album_name: String(d.album_name || ''),
+          album_id: String(d.album_id || ''),
+          image: String(d.image || ''),
+          audio: String(d.audio || ''),
+          provider: String(d.provider || 'jamendo') as ISongSubDoc['provider'],
         },
         addedAt: new Date(),
       },
@@ -122,9 +123,7 @@ export class UserService {
   public static async updatePlaylist(userId: string, playlistId: string, data: { name?: string; description?: string; isPublic?: boolean }) {
     const playlist = await PlaylistModel.findOne({ _id: playlistId, owner: userId });
     if (!playlist) {
-      const error = new Error('Playlist not found or access denied');
-      (error as any).statusCode = 404;
-      throw error;
+      throw new AppError('Playlist not found or access denied', 404);
     }
 
     if (data.name !== undefined) playlist.name = data.name.trim();
@@ -148,36 +147,32 @@ export class UserService {
   public static async deletePlaylist(userId: string, playlistId: string) {
     const result = await PlaylistModel.deleteOne({ _id: playlistId, owner: userId });
     if (result.deletedCount === 0) {
-      const error = new Error('Playlist not found or access denied');
-      (error as any).statusCode = 404;
-      throw error;
+      throw new AppError('Playlist not found or access denied', 404);
     }
     return { id: playlistId };
   }
 
-  public static async addTrackToPlaylist(userId: string, playlistId: string, trackData: any) {
+  public static async addTrackToPlaylist(userId: string, playlistId: string, trackData: Record<string, unknown>) {
     const playlist = await PlaylistModel.findOne({ _id: playlistId, owner: userId });
     if (!playlist) {
-      const error = new Error('Playlist not found or access denied');
-      (error as any).statusCode = 404;
-      throw error;
+      throw new AppError('Playlist not found or access denied', 404);
     }
 
+    const d = trackData;
     const newTrack = {
-      id: trackData.id,
-      name: trackData.name || 'Untitled Track',
-      duration: trackData.duration || 0,
-      artist_name: trackData.artist_name || 'Unknown Artist',
-      artist_id: trackData.artist_id || '',
-      album_name: trackData.album_name || '',
-      album_id: trackData.album_id || '',
-      image: trackData.image || '',
-      audio: trackData.audio || '',
-      provider: trackData.provider || 'jamendo',
+      id: String(d.id || ''),
+      name: String(d.name || 'Untitled Track'),
+      duration: Number(d.duration || 0),
+      artist_name: String(d.artist_name || 'Unknown Artist'),
+      artist_id: String(d.artist_id || ''),
+      album_name: String(d.album_name || ''),
+      album_id: String(d.album_id || ''),
+      image: String(d.image || ''),
+      audio: String(d.audio || ''),
+      provider: String(d.provider || 'jamendo') as ISongSubDoc['provider'],
     };
 
-    // Avoid duplicate tracks in same playlist if preferred or append
-    playlist.tracks.push(newTrack as any);
+    playlist.tracks.push(newTrack);
     await playlist.save();
 
     return {
@@ -189,12 +184,10 @@ export class UserService {
   public static async removeTrackFromPlaylist(userId: string, playlistId: string, trackId: string) {
     const playlist = await PlaylistModel.findOne({ _id: playlistId, owner: userId });
     if (!playlist) {
-      const error = new Error('Playlist not found or access denied');
-      (error as any).statusCode = 404;
-      throw error;
+      throw new AppError('Playlist not found or access denied', 404);
     }
 
-    playlist.tracks = playlist.tracks.filter((t) => t.id !== trackId) as any;
+    playlist.tracks = playlist.tracks.filter((t) => t.id !== trackId);
     await playlist.save();
 
     return {
@@ -203,15 +196,13 @@ export class UserService {
     };
   }
 
-  public static async reorderPlaylistTracks(userId: string, playlistId: string, tracks: any[]) {
+  public static async reorderPlaylistTracks(userId: string, playlistId: string, tracks: ISongSubDoc[]) {
     const playlist = await PlaylistModel.findOne({ _id: playlistId, owner: userId });
     if (!playlist) {
-      const error = new Error('Playlist not found or access denied');
-      (error as any).statusCode = 404;
-      throw error;
+      throw new AppError('Playlist not found or access denied', 404);
     }
 
-    playlist.tracks = tracks as any;
+    playlist.tracks = tracks;
     await playlist.save();
 
     return {
@@ -224,25 +215,27 @@ export class UserService {
   // Recently Played & Listening History
   // =========================================================================
 
-  public static async addRecentlyPlayed(userId: string, trackData: any) {
-    if (!trackData || !trackData.id) return;
+  public static async addRecentlyPlayed(userId: string, trackData: Record<string, unknown>) {
+    const trackId = String(trackData?.id || '');
+    if (!trackId) return;
 
+    const d = trackData;
     await RecentlyPlayed.findOneAndUpdate(
-      { user: userId, trackId: trackData.id },
+      { user: userId, trackId },
       {
         user: userId,
-        trackId: trackData.id,
+        trackId,
         trackData: {
-          id: trackData.id,
-          name: trackData.name || 'Untitled Track',
-          duration: trackData.duration || 0,
-          artist_name: trackData.artist_name || 'Unknown Artist',
-          artist_id: trackData.artist_id || '',
-          album_name: trackData.album_name || '',
-          album_id: trackData.album_id || '',
-          image: trackData.image || '',
-          audio: trackData.audio || '',
-          provider: trackData.provider || 'jamendo',
+          id: trackId,
+          name: String(d.name || 'Untitled Track'),
+          duration: Number(d.duration || 0),
+          artist_name: String(d.artist_name || 'Unknown Artist'),
+          artist_id: String(d.artist_id || ''),
+          album_name: String(d.album_name || ''),
+          album_id: String(d.album_id || ''),
+          image: String(d.image || ''),
+          audio: String(d.audio || ''),
+          provider: String(d.provider || 'jamendo') as ISongSubDoc['provider'],
         },
         playedAt: new Date(),
       },
@@ -262,23 +255,25 @@ export class UserService {
     }));
   }
 
-  public static async recordListeningHistory(userId: string, trackData: any, playDurationSeconds = 0, completed = false) {
-    if (!trackData || !trackData.id) return;
+  public static async recordListeningHistory(userId: string, trackData: Record<string, unknown>, playDurationSeconds = 0, completed = false) {
+    const trackId = String(trackData?.id || '');
+    if (!trackId) return;
 
+    const d = trackData;
     await ListeningHistory.create({
       user: userId,
-      trackId: trackData.id,
+      trackId,
       trackData: {
-        id: trackData.id,
-        name: trackData.name || 'Untitled Track',
-        duration: trackData.duration || 0,
-        artist_name: trackData.artist_name || 'Unknown Artist',
-        artist_id: trackData.artist_id || '',
-        album_name: trackData.album_name || '',
-        album_id: trackData.album_id || '',
-        image: trackData.image || '',
-        audio: trackData.audio || '',
-        provider: trackData.provider || 'jamendo',
+        id: trackId,
+        name: String(d.name || 'Untitled Track'),
+        duration: Number(d.duration || 0),
+        artist_name: String(d.artist_name || 'Unknown Artist'),
+        artist_id: String(d.artist_id || ''),
+        album_name: String(d.album_name || ''),
+        album_id: String(d.album_id || ''),
+        image: String(d.image || ''),
+        audio: String(d.audio || ''),
+        provider: String(d.provider || 'jamendo') as ISongSubDoc['provider'],
       },
       playDurationSeconds,
       completed,
@@ -307,9 +302,7 @@ export class UserService {
   public static async updateUserProfile(userId: string, data: { fullName?: string; avatar?: string }) {
     const user = await User.findById(userId);
     if (!user) {
-      const error = new Error('User not found');
-      (error as any).statusCode = 404;
-      throw error;
+      throw new AppError('User not found', 404);
     }
 
     if (data.fullName !== undefined && data.fullName.trim()) {
@@ -340,9 +333,7 @@ export class UserService {
   public static async uploadAvatar(userId: string, fileBuffer: Buffer) {
     const user = await User.findById(userId);
     if (!user) {
-      const error = new Error('User not found');
-      (error as any).statusCode = 404;
-      throw error;
+      throw new AppError('User not found', 404);
     }
 
     // Delete existing Cloudinary image asset if present
@@ -371,9 +362,7 @@ export class UserService {
   public static async deleteAccount(userId: string) {
     const user = await User.findById(userId);
     if (!user) {
-      const error = new Error('User account not found');
-      (error as any).statusCode = 404;
-      throw error;
+      throw new AppError('User account not found', 404);
     }
 
     // Delete Cloudinary avatar if present

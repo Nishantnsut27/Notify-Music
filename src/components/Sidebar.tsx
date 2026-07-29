@@ -62,7 +62,7 @@ export function Sidebar() {
     };
   }, [isSidebarOpen, closeSidebar]);
 
-  const handleNavClick = (view: 'search' | 'favorites' | 'playlists' | 'recently-played' | 'history') => {
+  const handleNavClick = (view: 'search' | 'favorites' | 'playlists' | 'recent') => {
     setCurrentView(view);
     if (window.innerWidth <= 768) {
       closeSidebar();
@@ -179,7 +179,7 @@ export function Sidebar() {
           <div className="sidebar-logo">
             <img
               src="/Favicon.png"
-              alt="Notify Music Player Logo"
+              alt="Notify Music Logo"
               width="32"
               height="32"
               className="sidebar-logo-icon"
@@ -222,8 +222,8 @@ export function Sidebar() {
 
                 <li>
                   <button
-                    onClick={() => handleNavClick('recently-played')}
-                    className={`sidebar-nav-item ${currentView === 'recently-played' ? 'sidebar-nav-item-active' : ''}`}
+                    onClick={() => handleNavClick('recent')}
+                    className={`sidebar-nav-item ${currentView === 'recent' ? 'sidebar-nav-item-active' : ''}`}
                   >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="12" cy="12" r="10" />
@@ -233,19 +233,6 @@ export function Sidebar() {
                   </button>
                 </li>
 
-                <li>
-                  <button
-                    onClick={() => handleNavClick('history')}
-                    className={`sidebar-nav-item ${currentView === 'history' ? 'sidebar-nav-item-active' : ''}`}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="20" x2="18" y2="10" />
-                      <line x1="12" y1="20" x2="12" y2="4" />
-                      <line x1="6" y1="20" x2="6" y2="14" />
-                    </svg>
-                    History
-                  </button>
-                </li>
               </>
             )}
           </ul>

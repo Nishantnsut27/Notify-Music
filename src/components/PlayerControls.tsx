@@ -69,7 +69,7 @@ export function PlayerControls() {
     addToFavorites,
     removeFromFavorites,
     favorites,
-    clearQueue
+    navigateToArtist,
   } = usePlayerStore();
 
   const isDraggingProgress = useRef(false);
@@ -224,7 +224,7 @@ export function PlayerControls() {
   };
 
   const handleClosePlayer = () => {
-    clearQueue();
+    usePlayerStore.setState({ queue: [], currentIndex: -1, currentTrack: null, isPlaying: false, isBuffering: false, playbackError: null });
   };
 
   const getVolumeIcon = () => {
@@ -329,7 +329,7 @@ export function PlayerControls() {
           )}
         </div>
 
-        <div className="track-info">
+        <div className="track-info" onClick={() => navigateToArtist(currentTrack.artist_id || currentTrack.artist_name, currentTrack.artist_name)} style={{ cursor: 'pointer' }}>
           <div className="title-1">{currentTrack.name}</div>
           <div className="title-2">{currentTrack.artist_name}</div>
         </div>

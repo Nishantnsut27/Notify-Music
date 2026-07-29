@@ -108,26 +108,8 @@ export function EmptyRecentlyPlayed({ onBrowse }: { onBrowse?: () => void }) {
         </svg>
       }
       title="No recently played tracks"
-      description="Start playing music to build your queue and return to your recent tracks anytime."
+      description="Your recently played tracks will appear here as you listen to music."
       actionText={onBrowse ? 'Start Listening' : undefined}
-      onAction={onBrowse}
-    />
-  );
-}
-
-export function EmptyHistory({ onBrowse }: { onBrowse?: () => void }) {
-  return (
-    <EmptyState
-      icon={
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <line x1="18" y1="20" x2="18" y2="10" />
-          <line x1="12" y1="20" x2="12" y2="4" />
-          <line x1="6" y1="20" x2="6" y2="14" />
-        </svg>
-      }
-      title="Listening history is empty"
-      description="Your listening stats will appear here as you play songs."
-      actionText={onBrowse ? 'Explore Music' : undefined}
       onAction={onBrowse}
     />
   );

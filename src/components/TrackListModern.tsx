@@ -29,6 +29,7 @@ export function TrackListModern({
 }: TrackListProps) {
   const [showPlaylistMenu, setShowPlaylistMenu] = useState<string | null>(null);
   const [hoveredTrack, setHoveredTrack] = useState<string | null>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [addingToPlaylist, setAddingToPlaylist] = useState<string | null>(null);
@@ -104,6 +105,7 @@ export function TrackListModern({
       const target = e.target as HTMLElement | null;
       if (target && !target.closest('.track-list-container-modern')) {
         setHoveredTrack(null);
+        setHoveredIndex(null);
       }
     };
 
@@ -312,7 +314,7 @@ export function TrackListModern({
       ) : (
         <div 
           className={`track-list-container-modern ${hoveredTrack ? 'has-hovered-track' : ''}`}
-          onMouseLeave={() => setHoveredTrack(null)}
+          onMouseLeave={() => { setHoveredTrack(null); setHoveredIndex(null); }}
         >
           {tracks.map((track, index) => (
             <TrackItemModern
@@ -323,7 +325,7 @@ export function TrackListModern({
               isPlaying={isPlaying}
               isFavorite={isFavorite(track)}
               isHovered={hoveredTrack === track.id}
-              isBlurred={!!hoveredTrack && hoveredTrack !== track.id}
+              blurLevel={hoveredIndex !== null && hoveredIndex !== index ? Math.abs(hoveredIndex - index) : 0}
               isRemoving={removingFromPlaylist === track.id}
               showAddToPlaylist={showAddToPlaylist}
               playlistId={playlistId}
@@ -336,7 +338,7 @@ export function TrackListModern({
               onPlay={handlePlayTrack}
               onToggleFavorite={handleToggleFavorite}
               onRemoveFromPlaylist={handleRemoveFromPlaylist}
-              onMouseEnter={setHoveredTrack}
+              onMouseEnter={(id: string) => { setHoveredTrack(id); setHoveredIndex(index); }}
               onToggleMenu={(id) => setShowPlaylistMenu(showPlaylistMenu === id ? null : id)}
               onAddToPlaylist={handleAddToPlaylist}
               onCreatePlaylist={handleCreatePlaylist}

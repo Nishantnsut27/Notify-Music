@@ -59,7 +59,7 @@ export class JamendoProvider implements IMusicProvider {
         })
       ]);
 
-      let allTracks: Song[] = [];
+      const allTracks: Song[] = [];
       searches.forEach((res) => {
         if (res.status === 'fulfilled' && Array.isArray(res.value.data?.results)) {
           const songs = res.value.data.results.map((raw: unknown) => MusicNormalizer.normalizeJamendoSong(raw));

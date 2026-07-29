@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Song, Album, Artist, Playlist, Suggestion } from '../models/music.model.js';
 import { extractBestImage, extractBestAudioUrl } from '../utils/mediaHelper.js';
 

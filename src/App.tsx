@@ -9,11 +9,16 @@ import { PlaylistMenu } from './components/PlaylistMenu';
 import { ToastContainer } from './components/ToastContainer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ErrorDisplay } from './components/ErrorDisplay';
-import { EmptyFavorites, EmptyPlaylists, EmptyRecentlyPlayed, EmptyHistory } from './components/EmptyState';
+import { EmptyFavorites, EmptyPlaylists, EmptyRecentlyPlayed } from './components/EmptyState';
 import { PersonalizedHome } from './components/PersonalizedHome';
+import { ArtistPage } from './components/ArtistPage';
+import { AlbumPage } from './components/AlbumPage';
+import { RelatedMusic } from './components/RelatedMusic';
+import { DiscoverySection } from './components/DiscoverySection';
 import { usePlayerStore } from './store/playerStore';
 import { useToastStore } from './store/toastStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useRecommendations } from './hooks/useRecommendations';
 import { MusicAPI } from './services/musicApi';
 import type { Playlist } from './types/types';
 
@@ -73,7 +78,6 @@ function App() {
     playlists,
     favorites,
     recentlyPlayed,
-    listeningHistory,
     clearFavorites,
     setTrending,
     setLoading,
@@ -81,9 +85,14 @@ function App() {
     toggleSidebar,
     deletePlaylist,
     renamePlaylist,
+    currentArtistId,
+    currentArtistName,
+    currentAlbumId,
+    currentAlbumName,
   } = usePlayerStore();
 
   useKeyboardShortcuts();
+  useRecommendations();
 
   useEffect(() => {
     const handleUrlRouting = () => {
@@ -93,8 +102,7 @@ function App() {
       const isProtectedRoute =
         path.includes('/favorites') ||
         path.includes('/playlists') ||
-        path.includes('/recently-played') ||
-        path.includes('/history');
+        path.includes('/recent');
 
       if (!isAuth && isProtectedRoute) {
         usePlayerStore.getState().setCurrentView('search');
@@ -110,10 +118,20 @@ function App() {
         usePlayerStore.getState().setCurrentView('favorites');
       } else if (path.includes('/playlists')) {
         usePlayerStore.getState().setCurrentView('playlists');
-      } else if (path.includes('/recently-played')) {
-        usePlayerStore.getState().setCurrentView('recently-played');
-      } else if (path.includes('/history')) {
-        usePlayerStore.getState().setCurrentView('history');
+      } else if (path.includes('/recent')) {
+        usePlayerStore.getState().setCurrentView('recent');
+      } else if (path.includes('/artist')) {
+        const parts = path.split('/');
+        const artistIdx = parts.indexOf('artist');
+        if (artistIdx >= 0 && parts[artistIdx + 1]) {
+          usePlayerStore.getState().navigateToArtist(decodeURIComponent(parts[artistIdx + 1]), decodeURIComponent(parts[artistIdx + 1]));
+        }
+      } else if (path.includes('/album')) {
+        const parts = path.split('/');
+        const albumIdx = parts.indexOf('album');
+        if (albumIdx >= 0 && parts[albumIdx + 1]) {
+          usePlayerStore.getState().navigateToAlbum(decodeURIComponent(parts[albumIdx + 1]), decodeURIComponent(parts[albumIdx + 1]));
+        }
       } else if (path === '/' || path.includes('/search')) {
         usePlayerStore.getState().setCurrentView('search');
       }
@@ -126,7 +144,7 @@ function App() {
 
   // Protected Route Guard Effect: Redirect guest users attempting to view protected views
   useEffect(() => {
-    const protectedViews = ['favorites', 'playlists', 'recently-played', 'history'];
+    const protectedViews = ['favorites', 'playlists', 'recent'];
     if (!isAuthenticated && protectedViews.includes(currentView)) {
       setCurrentView('search');
       addToast({
@@ -140,7 +158,11 @@ function App() {
   }, [isAuthenticated, currentView, setCurrentView, addToast]);
 
   useEffect(() => {
-    const targetPath = currentView === 'search' ? '/' : `/${currentView}`;
+    let targetPath = '/';
+    if (currentView === 'search') targetPath = '/';
+    else if (currentView === 'artist') targetPath = `/artist/${encodeURIComponent(currentArtistId || currentArtistName || '')}`;
+    else if (currentView === 'album') targetPath = `/album/${encodeURIComponent(currentAlbumId || currentAlbumName || '')}`;
+    else targetPath = `/${currentView}`;
     if (window.location.pathname !== targetPath) {
       try {
         window.history.pushState(null, '', targetPath);
@@ -148,7 +170,7 @@ function App() {
         void e;
       }
     }
-  }, [currentView]);
+  }, [currentView, currentArtistId, currentArtistName, currentAlbumId, currentAlbumName]);
 
   const handleEditPlaylist = (playlistId: string, currentName: string) => {
     setPlaylistToRename({ id: playlistId, name: currentName });
@@ -292,7 +314,13 @@ function App() {
     switch (currentView) {
       case 'search':
         if (isAuthenticated) {
-          return <div className="view-container"><PersonalizedHome /></div>;
+          return (
+            <div className="view-container">
+              <PersonalizedHome />
+              <DiscoverySection />
+              <RelatedMusic />
+            </div>
+          );
         }
         return (
           <div className="view-container">
@@ -333,10 +361,17 @@ function App() {
                   title="Trending Songs"
                   isLoading={isLoading}
                 />
+                <RelatedMusic />
               </div>
             )}
           </div>
         );
+
+      case 'artist':
+        return <ArtistPage />;
+
+      case 'album':
+        return <AlbumPage />;
 
       case 'favorites':
         return (
@@ -473,7 +508,7 @@ function App() {
           </div>
         );
 
-      case 'recently-played':
+      case 'recent':
         return (
           <div className="view-container">
             <div className="page-header">
@@ -491,28 +526,6 @@ function App() {
               />
             ) : (
               <TrackListModern tracks={recentlyPlayed} showAddToPlaylist={true} />
-            )}
-          </div>
-        );
-
-      case 'history':
-        return (
-          <div className="view-container">
-            <div className="page-header">
-              <h1 className="page-title">History</h1>
-              <p className="page-subtitle">
-                {listeningHistory.length} {listeningHistory.length === 1 ? 'song' : 'songs'} played recently
-              </p>
-            </div>
-
-            {listeningHistory.length === 0 ? (
-              <EmptyHistory
-                onBrowse={() => {
-                  usePlayerStore.getState().setCurrentView('search');
-                }}
-              />
-            ) : (
-              <TrackListModern tracks={listeningHistory} showAddToPlaylist={true} />
             )}
           </div>
         );
@@ -541,7 +554,7 @@ function App() {
           </button>
 
           <h1 className="app-title" style={{ color: '#ffffff !important' }}>
-            Notify Music Player
+            Notify Music
           </h1>
 
           <div className="header-search-container">

@@ -57,7 +57,7 @@ export const authenticateUser = async (
     // Attach user to Request
     req.user = user;
     next();
-  } catch (error) {
+  } catch {
     res.status(401).json({
       success: false,
       error: 'Invalid or expired authentication session. Please log in again.',

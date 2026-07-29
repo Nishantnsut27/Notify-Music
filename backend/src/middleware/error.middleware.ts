@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
 export function errorHandlerMiddleware(err: any, _req: Request, res: Response, _next: NextFunction): void {
   console.error('[BackendServerError]', err.name || 'Error', err.message || err);
 

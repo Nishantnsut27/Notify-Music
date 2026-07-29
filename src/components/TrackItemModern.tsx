@@ -11,7 +11,7 @@ interface TrackItemModernProps {
   isPlaying: boolean;
   isFavorite: boolean;
   isHovered: boolean;
-  isBlurred: boolean;
+  blurLevel: number;
   isRemoving: boolean;
   showAddToPlaylist: boolean;
   playlistId?: string;
@@ -39,8 +39,7 @@ export const TrackItemModern = memo(function TrackItemModern({
   isCurrent,
   isPlaying,
   isFavorite,
-  hovered: _hovered,
-  isBlurred,
+  blurLevel,
   isRemoving,
   showAddToPlaylist,
   playlistId,
@@ -60,11 +59,11 @@ export const TrackItemModern = memo(function TrackItemModern({
   onShowCreatePlaylist,
   onNewPlaylistNameChange,
   isTrackInPlaylist,
-}: TrackItemModernProps & { hovered?: boolean }) {
+}: TrackItemModernProps) {
   const { isAuthenticated } = useAuthStore();
   return (
     <div
-      className={`track-item-modern ${isCurrent ? 'active' : ''} ${isBlurred ? 'blurred' : ''} ${isRemoving ? 'removing' : ''} ${showPlaylistMenu ? 'menu-open' : ''}`}
+      className={`track-item-modern ${isCurrent ? 'active' : ''} ${blurLevel > 0 ? 'blurred' : ''} ${isRemoving ? 'removing' : ''} ${showPlaylistMenu ? 'menu-open' : ''}`}
       onClick={() => onPlay(track, index)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -76,10 +75,12 @@ export const TrackItemModern = memo(function TrackItemModern({
       tabIndex={0}
       aria-label={`Play ${track.name} by ${track.artist_name}`}
       onMouseEnter={() => onMouseEnter(track.id)}
+      data-blur-level={blurLevel}
       style={{
-        opacity: isRemoving ? 0.5 : 1,
-        transform: isRemoving ? 'translateX(-10px) scale(0.98)' : 'translateX(0) scale(1)',
-        transition: 'all 0.3s ease',
+        opacity: isRemoving ? 0.5 : blurLevel === 1 ? 0.9 : blurLevel === 2 ? 0.75 : blurLevel >= 3 ? 0.55 : 1,
+        filter: blurLevel === 1 ? 'blur(1px)' : blurLevel === 2 ? 'blur(2px)' : blurLevel >= 3 ? 'blur(4px)' : 'none',
+        transform: isRemoving ? 'translateX(-10px) scale(0.98)' : blurLevel > 0 ? 'scale(0.99)' : 'translateX(0) scale(1)',
+        transition: 'all 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
         pointerEvents: isRemoving ? 'none' : 'auto',
       }}
     >

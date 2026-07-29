@@ -26,6 +26,10 @@ export interface Artist {
   website: string;
   joindate: string;
   image: string;
+  songCount?: number;
+  albums?: Album[];
+  topTracks?: Track[];
+  relatedArtists?: Artist[];
 }
 
 export interface Album {
@@ -35,6 +39,22 @@ export interface Album {
   artist_id: string;
   artist_name: string;
   image: string;
+  tracks?: Track[];
+  songCount?: number;
+  duration?: number;
+}
+
+export interface RelatedMusic {
+  similarSongs: Track[];
+  moreFromArtist: Track[];
+  moreFromAlbum: Track[];
+}
+
+export interface RecommendationContext {
+  trackId: string;
+  artistName: string;
+  albumName: string;
+  genres: string[];
 }
 
 export interface JamendoApiResponse<T> {

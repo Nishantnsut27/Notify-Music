@@ -1,4 +1,4 @@
-import type { Track } from '../types/types';
+import type { Track, Artist, Album, RelatedMusic } from '../types/types';
 import { API_ENDPOINTS, PLAYER_DEFAULTS } from '../config/constants';
 import { fetchJson, type ApiResponse } from './apiClient';
 import { formatDuration, getTrackUrl, getArtistUrl } from '../utils/formatters';
@@ -26,8 +26,8 @@ export class MusicAPI {
 
       searchCache.set(cacheKey, { timestamp: Date.now(), tracks: body.data });
       return body.data;
-    } catch (error: any) {
-      if (error?.name === 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
         throw error;
       }
       console.error('[MusicAPI] Search error:', error);
@@ -62,8 +62,127 @@ export class MusicAPI {
     }
   }
 
+  static async getArtistById(id: string): Promise<Artist | null> {
+    try {
+      const url = API_ENDPOINTS.ARTIST(id);
+      const body = await fetchJson<ApiResponse<Artist>>(url);
+      return body.success ? body.data : null;
+    } catch (error) {
+      console.error('[MusicAPI] Get artist by ID error:', error);
+      return null;
+    }
+  }
+
+  static async getAlbumById(id: string): Promise<Album | null> {
+    try {
+      const url = API_ENDPOINTS.ALBUM(id);
+      const body = await fetchJson<ApiResponse<Album>>(url);
+      return body.success ? body.data : null;
+    } catch (error) {
+      console.error('[MusicAPI] Get album by ID error:', error);
+      return null;
+    }
+  }
+
+  static async getSuggestionsById(id: string): Promise<Track[]> {
+    try {
+      const url = API_ENDPOINTS.SUGGESTIONS(id);
+      const body = await fetchJson<ApiResponse<Track[]>>(url);
+      return body.success ? body.data : [];
+    } catch (error) {
+      console.error('[MusicAPI] Get suggestions error:', error);
+      return [];
+    }
+  }
+
   static async getTracksByGenre(genre: string, limit = PLAYER_DEFAULTS.DEFAULT_SEARCH_LIMIT): Promise<Track[]> {
     return this.searchTracks(genre, limit);
+  }
+
+  static async getArtistTracks(artistName: string, limit = 30): Promise<Track[]> {
+    const cacheKey = `artist:${artistName.toLowerCase()}:${limit}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return cached.tracks;
+    }
+    const tracks = await this.searchTracks(artistName, limit);
+    const filtered = tracks.filter(t => t.artist_name.toLowerCase() === artistName.toLowerCase());
+    searchCache.set(cacheKey, { timestamp: Date.now(), tracks: filtered });
+    return filtered;
+  }
+
+  static async getAlbumTracks(albumName: string, artistName?: string, limit = 30): Promise<Track[]> {
+    const cacheKey = `album:${albumName.toLowerCase()}:${artistName?.toLowerCase() || ''}:${limit}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return cached.tracks;
+    }
+    const query = artistName ? `${albumName} ${artistName}` : albumName;
+    const tracks = await this.searchTracks(query, limit);
+    const filtered = tracks.filter(t => t.album_name.toLowerCase() === albumName.toLowerCase());
+    searchCache.set(cacheKey, { timestamp: Date.now(), tracks: filtered });
+    return filtered;
+  }
+
+  static async getRelatedMusic(track: Track): Promise<RelatedMusic> {
+    const cacheKey = `related:${track.id}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return cached.tracks as unknown as RelatedMusic;
+    }
+
+    const [similarByGenre, moreFromArtist, moreFromAlbum] = await Promise.all([
+      track.musicinfo?.tags?.genres?.[0]
+        ? this.getTracksByGenre(track.musicinfo.tags.genres[0], 10)
+        : Promise.resolve<Track[]>([]),
+      this.getArtistTracks(track.artist_name, 10),
+      this.getAlbumTracks(track.album_name, track.artist_name, 10),
+    ]);
+
+    const similarSongs = (similarByGenre || [])
+      .filter(t => t.id !== track.id)
+      .slice(0, 8);
+    const artistTracks = (moreFromArtist || [])
+      .filter(t => t.id !== track.id)
+      .slice(0, 8);
+    const albumTracks = (moreFromAlbum || [])
+      .filter(t => t.id !== track.id)
+      .slice(0, 8);
+
+    const result: RelatedMusic = { similarSongs, moreFromArtist: artistTracks, moreFromAlbum: albumTracks };
+    searchCache.set(cacheKey, { timestamp: Date.now(), tracks: result as unknown as Track[] });
+    return result;
+  }
+
+  static async getRecommendations(track: Track, excludeIds: Set<string> = new Set(), limit = 10): Promise<Track[]> {
+    const genres = track.musicinfo?.tags?.genres || [];
+    const searches: Promise<Track[]>[] = [];
+
+    if (genres.length > 0) {
+      searches.push(this.getTracksByGenre(genres[0], limit));
+    }
+    searches.push(this.getArtistTracks(track.artist_name, limit / 2));
+    searches.push(this.searchTracks(`${track.artist_name} ${track.album_name}`, limit));
+
+    const results = await Promise.all(searches);
+    const seen = new Set<string>([track.id, ...excludeIds]);
+    const combined: Track[] = [];
+
+    for (const batch of results) {
+      for (const t of batch) {
+        if (!seen.has(t.id) && t.audio) {
+          seen.add(t.id);
+          combined.push(t);
+        }
+      }
+    }
+
+    return combined.slice(0, limit);
+  }
+
+  static getCached(key: string): Track[] | null {
+    const cached = searchCache.get(key);
+    return (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) ? cached.tracks : null;
   }
 }
 
