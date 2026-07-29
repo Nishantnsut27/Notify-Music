@@ -80,53 +80,6 @@ export class MusicNormalizer {
     };
   }
 
-  static normalizeYouTubeSong(raw: any, audioUrlOverride?: string): Song {
-    const title = typeof raw.title === 'string' ? raw.title : raw.title?.text || raw.name || 'Untitled Track';
-    const artist = Array.isArray(raw.artists)
-      ? raw.artists.map((a: any) => a.name).join(', ')
-      : raw.author?.name || raw.artist_name || 'Unknown Artist';
-    const artistId = Array.isArray(raw.artists) && raw.artists.length > 0
-      ? raw.artists[0].channel_id || raw.artists[0].id || ''
-      : raw.author?.channel_id || '';
-
-    const album = raw.album?.name || (typeof raw.album === 'string' ? raw.album : '');
-    const albumId = raw.album?.id || '';
-
-    const thumbnails = raw.thumbnails || raw.thumbnail || [];
-    const bestThumb = Array.isArray(thumbnails) && thumbnails.length > 0
-      ? thumbnails[thumbnails.length - 1].url
-      : `/placeholder-album.svg`;
-
-    const duration = typeof raw.duration?.seconds === 'number'
-      ? raw.duration.seconds
-      : (typeof raw.duration === 'number' ? raw.duration : 0);
-
-    const audioUrl = audioUrlOverride || raw.audio || `https://www.youtube.com/watch?v=${raw.id || raw.video_id || ''}`;
-
-    return {
-      id: raw.id || raw.video_id || '',
-      name: cleanText(title),
-      duration,
-      artist_name: cleanText(artist),
-      artist_id: artistId,
-      album_name: cleanText(album),
-      album_id: albumId,
-      album_image: bestThumb,
-      image: bestThumb,
-      audio: audioUrl,
-      audiodownload: audioUrl,
-      license_ccurl: '',
-      musicinfo: {
-        tags: {
-          genres: ['YouTube Music'],
-          instruments: [],
-          vartags: []
-        }
-      },
-      provider: 'youtube'
-    };
-  }
-
   static normalizeJioSaavnAlbum(raw: any): Album {
     const image = extractBestImage(raw.image);
     const primaryArtist = raw.artists?.primary?.[0]?.name || raw.artist_name || raw.artist || 'Unknown Artist';
@@ -168,31 +121,6 @@ export class MusicNormalizer {
     };
   }
 
-  static normalizeYouTubeAlbum(raw: any): Album {
-    const name = typeof raw.title === 'string' ? raw.title : raw.title?.text || raw.name || 'Untitled Album';
-    const artist = Array.isArray(raw.artists) ? raw.artists.map((a: any) => a.name).join(', ') : 'Unknown Artist';
-    const thumbnails = raw.thumbnails || raw.thumbnail || [];
-    const image = Array.isArray(thumbnails) && thumbnails.length > 0 ? thumbnails[thumbnails.length - 1].url : '/placeholder-album.svg';
-
-    const songs = Array.isArray(raw.contents || raw.songs)
-      ? (raw.contents || raw.songs).map((s: any) => this.normalizeYouTubeSong(s))
-      : [];
-
-    return {
-      id: raw.id || raw.album_id || '',
-      name: cleanText(name),
-      description: cleanText(raw.description || ''),
-      year: raw.year || '',
-      releasedate: raw.release_date || '',
-      artist_id: raw.artists?.[0]?.channel_id || '',
-      artist_name: cleanText(artist),
-      image,
-      songCount: songs.length,
-      songs,
-      provider: 'youtube'
-    };
-  }
-
   static normalizeJioSaavnArtist(raw: any): Artist {
     const image = extractBestImage(raw.image);
     const topSongs = Array.isArray(raw.topSongs)
@@ -227,26 +155,6 @@ export class MusicNormalizer {
     };
   }
 
-  static normalizeYouTubeArtist(raw: any): Artist {
-    const name = typeof raw.name === 'string' ? raw.name : raw.name?.text || raw.title || 'Unknown Artist';
-    const thumbnails = raw.thumbnails || raw.thumbnail || [];
-    const image = Array.isArray(thumbnails) && thumbnails.length > 0 ? thumbnails[thumbnails.length - 1].url : '/placeholder-artist.svg';
-
-    const topSongs = Array.isArray(raw.songs?.contents || raw.topSongs)
-      ? (raw.songs?.contents || raw.topSongs).map((s: any) => this.normalizeYouTubeSong(s))
-      : [];
-
-    return {
-      id: raw.id || raw.channel_id || '',
-      name: cleanText(name),
-      website: '',
-      joindate: '',
-      image,
-      topSongs,
-      provider: 'youtube'
-    };
-  }
-
   static normalizeJioSaavnPlaylist(raw: any): Playlist {
     const image = extractBestImage(raw.image);
     const tracks = Array.isArray(raw.songs)
@@ -260,25 +168,6 @@ export class MusicNormalizer {
       image,
       description: cleanText(raw.description || ''),
       provider: 'jiosaavn'
-    };
-  }
-
-  static normalizeYouTubePlaylist(raw: any): Playlist {
-    const name = typeof raw.title === 'string' ? raw.title : raw.title?.text || raw.name || 'Untitled Playlist';
-    const thumbnails = raw.thumbnails || raw.thumbnail || [];
-    const image = Array.isArray(thumbnails) && thumbnails.length > 0 ? thumbnails[thumbnails.length - 1].url : '/placeholder-album.svg';
-
-    const tracks = Array.isArray(raw.contents || raw.tracks)
-      ? (raw.contents || raw.tracks).map((t: any) => this.normalizeYouTubeSong(t))
-      : [];
-
-    return {
-      id: raw.id || raw.playlist_id || '',
-      name: cleanText(name),
-      tracks,
-      image,
-      description: cleanText(raw.description || ''),
-      provider: 'youtube'
     };
   }
 

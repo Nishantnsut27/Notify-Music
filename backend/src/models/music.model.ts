@@ -18,7 +18,7 @@ export interface Song {
       vartags: string[];
     };
   };
-  provider?: 'jiosaavn' | 'youtube' | 'jamendo';
+  provider?: 'jiosaavn' | 'jamendo';
 }
 
 export interface Album {
@@ -33,7 +33,7 @@ export interface Album {
   playCount?: number;
   songCount?: number;
   songs?: Song[];
-  provider?: 'jiosaavn' | 'youtube' | 'jamendo';
+  provider?: 'jiosaavn' | 'jamendo';
 }
 
 export interface Artist {
@@ -46,7 +46,7 @@ export interface Artist {
   bio?: string;
   topSongs?: Song[];
   topAlbums?: Album[];
-  provider?: 'jiosaavn' | 'youtube' | 'jamendo';
+  provider?: 'jiosaavn' | 'jamendo';
 }
 
 export interface Playlist {
@@ -57,7 +57,7 @@ export interface Playlist {
   updatedAt?: number;
   image?: string;
   description?: string;
-  provider?: 'jiosaavn' | 'youtube' | 'jamendo';
+  provider?: 'jiosaavn' | 'jamendo';
 }
 
 export interface Suggestion {
@@ -67,7 +67,7 @@ export interface Suggestion {
   image: string;
   audio: string;
   duration: number;
-  provider?: 'jiosaavn' | 'youtube' | 'jamendo';
+  provider?: 'jiosaavn' | 'jamendo';
 }
 
 export interface StandardApiResponse<T> {

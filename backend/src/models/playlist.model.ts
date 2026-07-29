@@ -10,7 +10,7 @@ export interface ISongSubDoc {
   album_id?: string;
   image?: string;
   audio?: string;
-  provider?: 'jiosaavn' | 'youtube' | 'jamendo';
+  provider?: 'jiosaavn' | 'jamendo';
 }
 
 export interface IPlaylistDoc extends Document {
@@ -35,7 +35,7 @@ export const songSubSchema = new Schema<ISongSubDoc>(
     album_id: { type: String, default: '' },
     image: { type: String, default: '' },
     audio: { type: String, default: '' },
-    provider: { type: String, enum: ['jiosaavn', 'youtube', 'jamendo'], default: 'jamendo' },
+    provider: { type: String, enum: ['jiosaavn', 'jamendo'], default: 'jamendo' },
   },
   { _id: false }
 );

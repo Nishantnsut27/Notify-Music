@@ -1,7 +1,7 @@
 import { Song, Album, Artist, Playlist } from '../models/music.model.js';
 
 export interface IMusicProvider {
-  readonly name: 'jiosaavn' | 'youtube' | 'jamendo';
+  readonly name: 'jiosaavn' | 'jamendo';
   search(query: string, limit?: number): Promise<Song[]>;
   getSongById(id: string): Promise<Song | null>;
   getAlbumById(id: string): Promise<Album | null>;

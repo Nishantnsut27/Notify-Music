@@ -3,7 +3,6 @@ import { normalizeStringForSearch, scoreSongForQuality, isLikelyOfficialSong } f
 
 const PROVIDER_PRIORITY: Record<string, number> = {
   jiosaavn: 1,
-  youtube: 2,
   jamendo: 3
 };
 
