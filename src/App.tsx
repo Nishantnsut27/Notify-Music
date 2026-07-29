@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { SearchBar } from './components/SearchBar';
 import { SearchResults } from './components/SearchResults';
 import { TrackListModern } from './components/TrackListModern';
@@ -10,11 +10,12 @@ import { ToastContainer } from './components/ToastContainer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ErrorDisplay } from './components/ErrorDisplay';
 import { EmptyFavorites, EmptyPlaylists, EmptyRecentlyPlayed } from './components/EmptyState';
-import { PersonalizedHome } from './components/PersonalizedHome';
-import { ArtistPage } from './components/ArtistPage';
-import { AlbumPage } from './components/AlbumPage';
-import { RelatedMusic } from './components/RelatedMusic';
-import { DiscoverySection } from './components/DiscoverySection';
+
+const PersonalizedHome = lazy(() => import('./components/PersonalizedHome').then(m => ({ default: m.PersonalizedHome })));
+const ArtistPage = lazy(() => import('./components/ArtistPage').then(m => ({ default: m.ArtistPage })));
+const AlbumPage = lazy(() => import('./components/AlbumPage').then(m => ({ default: m.AlbumPage })));
+const RelatedMusic = lazy(() => import('./components/RelatedMusic').then(m => ({ default: m.RelatedMusic })));
+const DiscoverySection = lazy(() => import('./components/DiscoverySection').then(m => ({ default: m.DiscoverySection })));
 import { usePlayerStore } from './store/playerStore';
 import { useToastStore } from './store/toastStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -26,6 +27,8 @@ import { UserAvatar } from './components/auth/UserAvatar';
 import { UserDropdown } from './components/auth/UserDropdown';
 import { AuthModal, type AuthMode } from './components/auth/AuthModal';
 import { useAuthStore } from './store/authStore';
+import { InstallButton } from './pwa/InstallButton';
+import { OfflinePage } from './pwa/OfflinePage';
 
 import './styles/variables.css';
 import './styles/layout.css';
@@ -35,9 +38,21 @@ import './styles/animations.css';
 import './styles/auth.css';
 
 function App() {
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<AuthMode>('login');
+
+  useEffect(() => {
+    const goOnline = () => setIsOffline(false);
+    const goOffline = () => setIsOffline(true);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
   const { isAuthenticated, checkAuth } = useAuthStore();
   const { addToast } = useToastStore();
@@ -316,9 +331,9 @@ function App() {
         if (isAuthenticated) {
           return (
             <div className="view-container">
-              <PersonalizedHome />
-              <DiscoverySection />
-              <RelatedMusic />
+              <Suspense fallback={null}><PersonalizedHome /></Suspense>
+              <Suspense fallback={null}><DiscoverySection /></Suspense>
+              <Suspense fallback={null}><RelatedMusic /></Suspense>
             </div>
           );
         }
@@ -361,17 +376,17 @@ function App() {
                   title="Trending Songs"
                   isLoading={isLoading}
                 />
-                <RelatedMusic />
+                <Suspense fallback={null}><RelatedMusic /></Suspense>
               </div>
             )}
           </div>
         );
 
       case 'artist':
-        return <ArtistPage />;
+        return <Suspense fallback={null}><ArtistPage /></Suspense>;
 
       case 'album':
-        return <AlbumPage />;
+        return <Suspense fallback={null}><AlbumPage /></Suspense>;
 
       case 'favorites':
         return (
@@ -535,6 +550,10 @@ function App() {
     }
   };
 
+  if (isOffline) {
+    return <OfflinePage />;
+  }
+
   return (
     <div className="app">
       <Sidebar />
@@ -562,6 +581,7 @@ function App() {
           </div>
 
           <div className="header-actions">
+            <InstallButton />
             <div style={{ position: 'relative' }}>
               <UserAvatar
                 isOpen={isUserDropdownOpen}

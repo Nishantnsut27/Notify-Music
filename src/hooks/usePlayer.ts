@@ -80,7 +80,7 @@ function attachAudioListeners(audio: HTMLAudioElement) {
   audio.addEventListener('pause', () => { if (!audio.ended && !suppressPauseEvent) store().setIsPlaying(false); });
   audio.addEventListener('ended', () => {
     const state = store();
-    if (state.repeatMode === 'one') { audio.currentTime = 0; void audio.play(); } else state.nextTrack();
+    if (state.repeatMode === 'one') { audio.currentTime = 0; void audio.play().catch(() => {}); } else state.nextTrack();
   });
   audio.addEventListener('error', () => {
     const state = store();

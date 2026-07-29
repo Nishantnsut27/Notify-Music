@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://notifymusic.vercel.app/sitemap.xml

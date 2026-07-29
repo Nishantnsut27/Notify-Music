@@ -115,6 +115,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   checkAuth: async () => {
+    if (!getStoredToken()) {
+      set({ isAuthenticated: false, isInitialized: true, user: null, token: null });
+      return;
+    }
     try {
       const response = await authApi.getCurrentUser();
       set({
@@ -135,14 +139,6 @@ export const useAuthStore = create<AuthState>((set) => ({
       token: null,
       isAuthenticated: false,
       isInitialized: true,
-    });
-    import('./playerStore').then(({ usePlayerStore }) => {
-      usePlayerStore.setState({
-        favorites: [],
-        playlists: [],
-        recentlyPlayed: [],
-        currentView: 'search',
-      });
     });
   },
 

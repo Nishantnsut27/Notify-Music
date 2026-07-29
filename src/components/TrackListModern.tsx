@@ -62,13 +62,12 @@ export function TrackListModern({
       }
     } else {
       playTrack(track, tracks, index);
-      try {
-        const audio = getAudio();
-        if (audio) {
-          audio.play().catch(console.error);
-        }
-      } catch (e) {
-        console.warn('Audio play trigger warning:', e);
+      const audio = getAudio();
+      if (audio) {
+        audio.play().catch((err) => {
+          if (err?.name === 'AbortError') return;
+          console.warn('Audio play error:', err);
+        });
       }
     }
   };
