@@ -192,7 +192,10 @@ export const usePlayerStore = create<AppStore>()(
     playTrack: (track: Track, queue?: Track[], index?: number) => {
       const state = get();
       const newQueue = queue || (state.queue.length > 0 ? state.queue : [track]);
-      const newIndex = index !== undefined ? index : newQueue.findIndex(t => t.id === track.id);
+      let newIndex = newQueue.findIndex(t => t.id === track.id);
+      if (newIndex === -1) {
+        newIndex = index !== undefined ? index : 0;
+      }
 
       const updatedRecentlyPlayed = [track, ...state.recentlyPlayed.filter(t => t.id !== track.id)].slice(0, 30);
 

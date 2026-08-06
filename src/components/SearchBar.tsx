@@ -11,6 +11,8 @@ const HISTORY_LIMIT = 10;
 
 type Suggestion = { label: string; kind: 'Song' | 'Artist' | 'Album'; track: Track };
 
+const isMobileView = () => typeof window !== 'undefined' && window.innerWidth <= 768;
+
 const readGuestHistory = (): SearchHistoryItem[] => {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
 };
@@ -71,7 +73,7 @@ export function SearchBar() {
     const controller = new AbortController();
     requestRef.current = controller;
     const requestId = ++sequenceRef.current;
-    if (currentView !== 'search') setCurrentView('search');
+    if (!isMobileView() && currentView !== 'search') setCurrentView('search');
     setIsSearching(true); setLoading(true); setError(null); setStoreQuery(clean);
     try {
       const tracks = await MusicAPI.searchTracks(clean, undefined, controller.signal);
@@ -96,19 +98,20 @@ export function SearchBar() {
   useEffect(() => {
     const runExternalSearch = (event: Event) => {
       const value = (event as CustomEvent<string>).detail;
-      if (value) {
-        setQuery(value); setIsOpen(false);
-        if (currentView !== 'search') setCurrentView('search');
-        void performSearch(value);
-      }
+      if (!value) return;
+      if (isMobileView() && currentView !== 'search') return;
+      setQuery(value); setIsOpen(false);
+      if (!isMobileView() && currentView !== 'search') setCurrentView('search');
+      void performSearch(value);
     };
     window.addEventListener('music-search', runExternalSearch);
     return () => window.removeEventListener('music-search', runExternalSearch);
   }, [performSearch, currentView, setCurrentView]);
 
   const selectQuery = (value: string) => {
+    if (isMobileView() && currentView !== 'search') return;
     setQuery(value); setIsOpen(false); setActiveIndex(-1);
-    if (currentView !== 'search') setCurrentView('search');
+    if (!isMobileView() && currentView !== 'search') setCurrentView('search');
     void performSearch(value);
   };
   const clearHistory = async () => {

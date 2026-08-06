@@ -1,6 +1,5 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { SearchBar } from './components/SearchBar';
-import { SearchResults } from './components/SearchResults';
 import { TrackListModern } from './components/TrackListModern';
 import { PlayerControls } from './components/PlayerControls';
 import { Sidebar } from './components/Sidebar';
@@ -8,10 +7,10 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { PlaylistMenu } from './components/PlaylistMenu';
 import { ToastContainer } from './components/ToastContainer';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { ErrorDisplay } from './components/ErrorDisplay';
 import { EmptyFavorites, EmptyPlaylists, EmptyRecentlyPlayed } from './components/EmptyState';
 
 const PersonalizedHome = lazy(() => import('./components/PersonalizedHome').then(m => ({ default: m.PersonalizedHome })));
+const GuestHome = lazy(() => import('./components/GuestHome').then(m => ({ default: m.GuestHome })));
 const ArtistPage = lazy(() => import('./components/ArtistPage').then(m => ({ default: m.ArtistPage })));
 const AlbumPage = lazy(() => import('./components/AlbumPage').then(m => ({ default: m.AlbumPage })));
 const RelatedMusic = lazy(() => import('./components/RelatedMusic').then(m => ({ default: m.RelatedMusic })));
@@ -86,9 +85,6 @@ function App() {
     currentView,
     setCurrentView,
     isSidebarOpen,
-    results,
-    isLoading,
-    error,
     trending,
     playlists,
     favorites,
@@ -339,46 +335,7 @@ function App() {
         }
         return (
           <div className="view-container">
-            <div className="content-search-container">
-              <SearchBar />
-            </div>
-            {error ? (
-              <div style={{ margin: '16px 0' }}>
-                <ErrorDisplay
-                  title="Music Temporarily Unavailable"
-                  message={error}
-                  onRetry={() => {
-                    setError(null);
-                    const q = usePlayerStore.getState().query;
-                    if (q) {
-                      setLoading(true);
-                      MusicAPI.searchTracks(q)
-                        .then((res) => {
-                          usePlayerStore.getState().setResults(res);
-                        })
-                        .catch((err) => {
-                          setError(err instanceof Error ? err.message : 'Search failed. Please try again.');
-                        })
-                        .finally(() => setLoading(false));
-                    } else {
-                      window.location.reload();
-                    }
-                  }}
-                  onDismiss={() => setError(null)}
-                />
-              </div>
-            ) : results.length > 0 || usePlayerStore.getState().query ? (
-              <SearchResults tracks={results} query={usePlayerStore.getState().query} isLoading={isLoading} />
-            ) : (
-              <div>
-                <TrackListModern
-                  tracks={trending}
-                  title="Trending Songs"
-                  isLoading={isLoading}
-                />
-                <Suspense fallback={null}><RelatedMusic /></Suspense>
-              </div>
-            )}
+            <Suspense fallback={null}><GuestHome /></Suspense>
           </div>
         );
 

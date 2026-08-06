@@ -37,6 +37,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
+    const container = selectedMode === 'forgotPassword'
+      ? modalRef.current?.querySelector('.forgot-password-form')
+      : modalRef.current?.querySelector(
+          selectedMode === 'signup' ? '.auth-card-back' : '.auth-card-front'
+        );
+    const firstInput = container?.querySelector<HTMLInputElement>('input');
+    firstInput?.focus();
+  }, [isOpen, selectedMode]);
+
+  useEffect(() => {
+    if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -66,19 +77,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     };
 
     window.addEventListener('keydown', handleKeyDown);
-
-    setTimeout(() => {
-      if (modalRef.current) {
-        const container = selectedMode === 'forgotPassword'
-          ? modalRef.current.querySelector('.forgot-password-form')
-          : modalRef.current.querySelector(
-              selectedMode === 'signup' ? '.auth-card-back' : '.auth-card-front'
-            );
-        const firstInput = container?.querySelector<HTMLInputElement>('input');
-        firstInput?.focus();
-      }
-    }, 100);
-
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, selectedMode, onClose]);
 

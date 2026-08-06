@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import type { Track } from '../types/types';
 import { usePlayerStore } from '../store/playerStore';
 import { useToastStore } from '../store/toastStore';
-import { getAudio } from '../hooks/usePlayer';
 import { ConfirmModal } from './ConfirmModal';
 import { SkeletonTrackList, SkeletonGuestCardsGrid } from './Skeletons';
 import { EmptySearchResults, EmptyState } from './EmptyState';
@@ -62,13 +61,6 @@ export function TrackListModern({
       }
     } else {
       playTrack(track, tracks, index);
-      const audio = getAudio();
-      if (audio) {
-        audio.play().catch((err) => {
-          if (err?.name === 'AbortError') return;
-          console.warn('Audio play error:', err);
-        });
-      }
     }
   };
 

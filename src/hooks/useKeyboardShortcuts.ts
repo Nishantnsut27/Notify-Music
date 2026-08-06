@@ -4,6 +4,7 @@ import { seekAudio } from './usePlayer';
 
 export function useKeyboardShortcuts() {
   useEffect(() => {
+    if (typeof window === 'undefined' || window.innerWidth <= 768) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
 

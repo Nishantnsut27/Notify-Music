@@ -5,9 +5,10 @@ import { usePlayerStore } from '../store/playerStore';
 
 let singletonAudio: HTMLAudioElement | null = null;
 let listenersAttached = false;
-let activeTrackId = '';
-let sourceGeneration = 0;
-let fallbackGeneration = -1;
+
+let loadedSrc = '';
+let srcGeneration = 0;
+
 let lastReportedTime = -1;
 let suppressPauseEvent = false;
 
@@ -69,11 +70,15 @@ function attachAudioListeners(audio: HTMLAudioElement) {
   audio.addEventListener('canplay', () => {
     const state = store();
     state.setBuffering(false);
-    if (state.isPlaying && audio.paused) {
-      void audio.play().catch((err) => {
-        if (err?.name === 'AbortError') return;
-        state.setPlaybackError('Playback could not start. Please try again.');
-      });
+    if (state.isPlaying && audio.paused && audio.currentSrc) {
+      const generation = srcGeneration;
+      const src = state.currentTrack?.audio || state.currentTrack?.audiodownload || '';
+      if (src && src === loadedSrc && src === audio.currentSrc) {
+        void audio.play().catch((err) => {
+          if (err?.name === 'AbortError' || generation !== srcGeneration) return;
+          state.setPlaybackError('Playback could not start. Please try again.');
+        });
+      }
     }
   });
   audio.addEventListener('playing', () => { store().setBuffering(false); store().setIsPlaying(true); });
@@ -85,10 +90,22 @@ function attachAudioListeners(audio: HTMLAudioElement) {
   audio.addEventListener('error', () => {
     const state = store();
     const track = state.currentTrack;
-    if (track && fallbackGeneration !== sourceGeneration && track.audiodownload && track.audiodownload !== audio.currentSrc) {
-      fallbackGeneration = sourceGeneration;
-      audio.src = track.audiodownload;
+    if (!track) return;
+    const candidates = [track.audio, track.audiodownload].filter(Boolean);
+    const current = audio.currentSrc;
+    const next = candidates.find((c) => c !== current);
+    if (next && next !== current) {
+      loadedSrc = next;
+      srcGeneration += 1;
+      const generation = srcGeneration;
+      audio.src = next;
       audio.load();
+      if (state.isPlaying) {
+        void audio.play().catch((err) => {
+          if (err?.name === 'AbortError' || generation !== srcGeneration) return;
+          state.setPlaybackError('Playback could not start. Please try again.');
+        });
+      }
       return;
     }
     state.setIsPlaying(false);
@@ -114,47 +131,59 @@ export function usePlayer() {
 
   useEffect(() => {
     if (!currentTrack) {
-      if (activeTrackId) {
+      if (loadedSrc) {
         suppressPauseEvent = true;
         audio.pause();
         audio.removeAttribute('src');
         audio.load();
-        activeTrackId = '';
+        loadedSrc = '';
+        srcGeneration += 1;
         queueMicrotask(() => { suppressPauseEvent = false; });
       }
       return;
     }
     updateMediaSession(currentTrack);
-    if (activeTrackId === currentTrack.id) return;
-    activeTrackId = currentTrack.id;
-    sourceGeneration += 1;
-    fallbackGeneration = -1;
+    const src = currentTrack.audio || currentTrack.audiodownload || '';
+    if (src && src === loadedSrc) {
+      setBuffering(isPlaying ? audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA : false);
+      return;
+    }
+    srcGeneration += 1;
+    loadedSrc = src;
     lastReportedTime = -1;
     suppressPauseEvent = true;
     audio.pause();
     queueMicrotask(() => { suppressPauseEvent = false; });
     audio.removeAttribute('src');
     audio.load();
-    audio.src = currentTrack.audio || currentTrack.audiodownload;
-    audio.load();
+    if (src) {
+      audio.src = src;
+      audio.load();
+    }
     setPlaybackError(null);
-    setBuffering(isPlaying);
+    setBuffering(isPlaying && !!src);
   }, [audio, currentTrack, isPlaying, setBuffering, setPlaybackError]);
 
   useEffect(() => {
-    audio.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume / 100));
-  }, [audio, volume, isMuted]);
-  useEffect(() => {
     if (!currentTrack) return;
+    const src = currentTrack.audio || currentTrack.audiodownload || '';
+    if (!src) return;
     if (isPlaying) {
+      if (audio.src !== src) return;
+      const generation = srcGeneration;
       setBuffering(audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA);
       void audio.play().catch((err) => {
         if (err?.name === 'AbortError') return;
+        if (generation !== srcGeneration) return;
         setIsPlaying(false);
         setPlaybackError('Playback was blocked or the stream could not start. Retry to continue.');
       });
     } else if (!audio.paused) audio.pause();
   }, [audio, currentTrack, isPlaying, setBuffering, setIsPlaying, setPlaybackError]);
+
+  useEffect(() => {
+    audio.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume / 100));
+  }, [audio, volume, isMuted]);
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
     navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
