@@ -63,15 +63,4 @@ export function useRecommendations() {
       });
   }, [trackId, currentIndex, queueLength, isPlaying, autoplayEnabled, repeatMode, recommendationsLength, recentlyPlayed]);
 
-  useEffect(() => {
-    if (recommendationsLength === 0) return;
-    if (autoplayEnabled && repeatMode !== 'one') {
-      const remaining = queueLength - currentIndex - 1;
-      if (remaining === 0) {
-        const s = storeRef.current;
-        s.playTrack(s.recommendations[0], [...s.queue, ...s.recommendations], currentIndex + 1);
-        s.clearRecommendations();
-      }
-    }
-  }, [currentIndex, queueLength, isPlaying, autoplayEnabled, repeatMode, recommendationsLength]);
-}
+  }

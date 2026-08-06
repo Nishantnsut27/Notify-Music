@@ -225,7 +225,23 @@ export const usePlayerStore = create<AppStore>()(
 
       const nextIndex = state.currentIndex + 1;
       if (nextIndex >= state.queue.length) {
-        set({ isPlaying: false, isBuffering: false });
+        const recs = state.recommendations;
+        if (state.autoplayEnabled && state.repeatMode !== 'one' && recs.length > 0) {
+          const first = recs[0];
+          set({
+            currentTrack: first,
+            currentIndex: nextIndex,
+            currentTime: 0,
+            duration: first.duration || 0,
+            isPlaying: true,
+            isBuffering: true,
+            playbackError: null,
+            queue: [...state.queue, ...recs],
+            recommendations: [],
+          });
+        } else {
+          set({ isPlaying: false, isBuffering: false });
+        }
         return;
       }
 

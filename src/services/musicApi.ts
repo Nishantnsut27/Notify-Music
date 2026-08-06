@@ -100,26 +100,28 @@ export class MusicAPI {
   }
 
   static async getArtistTracks(artistName: string, limit: number = 30): Promise<Track[]> {
+    if (!artistName || !artistName.trim()) return [];
     const cacheKey = `artist:${artistName.toLowerCase()}:${limit}`;
     const cached = searchCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
       return cached.tracks;
     }
     const tracks = await this.searchTracks(artistName, limit);
-    const filtered = tracks.filter(t => t.artist_name.toLowerCase() === artistName.toLowerCase());
+    const filtered = tracks.filter(t => (t.artist_name || '').toLowerCase() === artistName.toLowerCase());
     searchCache.set(cacheKey, { timestamp: Date.now(), tracks: filtered });
     return filtered;
   }
 
   static async getAlbumTracks(albumName: string, artistName?: string, limit: number = 30): Promise<Track[]> {
-    const cacheKey = `album:${albumName.toLowerCase()}:${artistName?.toLowerCase() || ''}:${limit}`;
+    if (!albumName || !albumName.trim()) return [];
+    const cacheKey = `album:${albumName.toLowerCase()}:${(artistName || '').toLowerCase()}:${limit}`;
     const cached = searchCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
       return cached.tracks;
     }
     const query = artistName ? `${albumName} ${artistName}` : albumName;
     const tracks = await this.searchTracks(query, limit);
-    const filtered = tracks.filter(t => t.album_name.toLowerCase() === albumName.toLowerCase());
+    const filtered = tracks.filter(t => (t.album_name || '').toLowerCase() === albumName.toLowerCase());
     searchCache.set(cacheKey, { timestamp: Date.now(), tracks: filtered });
     return filtered;
   }
@@ -170,6 +172,7 @@ export class MusicAPI {
 
     for (const batch of results) {
       for (const t of batch) {
+        if (!t) continue;
         if (!seen.has(t.id) && t.audio) {
           seen.add(t.id);
           combined.push(t);

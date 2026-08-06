@@ -17,19 +17,40 @@ function cleanText(str: string | undefined | null): string {
 
 export class MusicNormalizer {
   static normalizeJioSaavnSong(raw: any): Song {
-    const rawArtists = Array.isArray(raw.artists?.primary)
-      ? raw.artists.primary.map((a: any) => a.name).join(', ')
-      : raw.primaryArtists || raw.singers || 'Unknown Artist';
+    let rawArtists: string;
+    if (Array.isArray(raw?.artists?.primary)) {
+      const valid = raw.artists.primary.filter((a: unknown): a is { name?: unknown } => !!a && typeof a === 'object');
+      rawArtists = valid.length > 0
+        ? valid.map((a: { name?: unknown }) => String(a.name ?? '')).filter(Boolean).join(', ')
+        : '';
+    } else {
+      rawArtists = '';
+    }
+    if (!rawArtists) {
+      rawArtists = typeof raw?.primaryArtists === 'string' ? raw.primaryArtists : '';
+    }
+    if (!rawArtists && Array.isArray(raw?.singers)) {
+      rawArtists = raw.singers.filter((s: unknown) => typeof s === 'string').join(', ');
+    }
+    if (!rawArtists) {
+      rawArtists = 'Unknown Artist';
+    }
 
-    const primaryArtistId = Array.isArray(raw.artists?.primary) && raw.artists.primary.length > 0
-      ? raw.artists.primary[0].id
-      : raw.artistId || '';
+    let primaryArtistId = typeof raw?.artistId === 'string' ? raw.artistId : '';
+    if (Array.isArray(raw?.artists?.primary)) {
+      for (const artist of raw.artists.primary) {
+        if (artist && typeof artist === 'object' && artist.id) {
+          primaryArtistId = String(artist.id);
+          break;
+        }
+      }
+    }
 
-    const bestImage = extractBestImage(raw.image || raw.album?.image || raw.images || raw.thumbnail);
-    const audioUrl = extractBestAudioUrl(raw.downloadUrl || raw.audio);
+    const bestImage = extractBestImage(raw?.image || raw?.album?.image || raw?.images || raw?.thumbnail);
+    const audioUrl = extractBestAudioUrl(raw?.downloadUrl || raw?.audio);
 
     return {
-      id: raw.id || '',
+      id: raw?.id || '',
       name: cleanText(raw.name || raw.title || 'Untitled Track'),
       duration: typeof raw.duration === 'number' ? raw.duration : parseInt(raw.duration || '0', 10),
       artist_name: cleanText(rawArtists),

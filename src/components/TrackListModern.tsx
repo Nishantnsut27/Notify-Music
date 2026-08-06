@@ -16,6 +16,7 @@ interface TrackListProps {
   isLoading?: boolean;
   error?: string | null;
   playlistId?: string;
+  playQueue?: Track[];
 }
 
 export function TrackListModern({ 
@@ -24,7 +25,8 @@ export function TrackListModern({
   showAddToPlaylist = true, 
   isLoading = false, 
   error = null,
-  playlistId 
+  playlistId,
+  playQueue
 }: TrackListProps) {
   const [showPlaylistMenu, setShowPlaylistMenu] = useState<string | null>(null);
   const [hoveredTrack, setHoveredTrack] = useState<string | null>(null);
@@ -52,6 +54,8 @@ export function TrackListModern({
     favorites
   } = usePlayerStore();
 
+  const playContext = playQueue || tracks;
+
   const handlePlayTrack = (track: Track, index: number) => {
     if (currentTrack?.id === track.id) {
       if (isPlaying) {
@@ -60,7 +64,7 @@ export function TrackListModern({
         setIsPlaying(true);
       }
     } else {
-      playTrack(track, tracks, index);
+      playTrack(track, playContext, index);
     }
   };
 

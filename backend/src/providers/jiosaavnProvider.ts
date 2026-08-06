@@ -31,7 +31,9 @@ export class JioSaavnProvider implements IMusicProvider {
         return [];
       }
 
-      return results.map((rawSong: unknown) => MusicNormalizer.normalizeJioSaavnSong(rawSong));
+      return results
+        .filter((rawSong: unknown) => !!rawSong && typeof rawSong === 'object')
+        .map((rawSong: unknown) => MusicNormalizer.normalizeJioSaavnSong(rawSong));
     }, { query, limit });
   }
 
@@ -90,7 +92,9 @@ export class JioSaavnProvider implements IMusicProvider {
       });
       const results = response.data?.data;
       if (Array.isArray(results) && results.length > 0) {
-        return results.map((rawSong: unknown) => MusicNormalizer.normalizeJioSaavnSong(rawSong));
+        return results
+          .filter((rawSong: unknown) => !!rawSong && typeof rawSong === 'object')
+          .map((rawSong: unknown) => MusicNormalizer.normalizeJioSaavnSong(rawSong));
       }
       return [];
     }, { id, limit });
