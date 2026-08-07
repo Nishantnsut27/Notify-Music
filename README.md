@@ -2,11 +2,7 @@
 
 > Where Music Finds You
 
-<<<<<<< HEAD
-[Live Demo](https://notify-music.vercel.app) · [Backend Health](https://notify-music-player.onrender.com/health) · [GitHub](https://github.com/Nishantnsut27/Notify-Music-Player)
-=======
 [Live Demo](https://notify-music.vercel.app) · [Backend Health](https://notify-music-player.onrender.com/health) · [GitHub](https://github.com/Nishantnsut27/Notify-Music)
->>>>>>> cbc4de0468427d15e1f5562275a065ebb1d24a88
 
 ---
 
@@ -135,13 +131,8 @@ The frontend is a single-page application deployed on Vercel. It uses Zustand fo
 ### Setup
 
 ```bash
-<<<<<<< HEAD
-git clone https://github.com/Nishantnsut27/Notify-Music-Player.git
-cd Notify-Music-Player
-=======
 git clone https://github.com/Nishantnsut27/Notify-Music.git
 cd Notify-Music
->>>>>>> cbc4de0468427d15e1f5562275a065ebb1d24a88
 npm install
 cd backend
 npm install
