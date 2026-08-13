@@ -82,8 +82,8 @@ export const authApi = {
     });
   },
 
-  async verifyResetOtp(data: { email: string; otp: string }): Promise<OtpResponse> {
-    return fetchJson<OtpResponse>(`${AUTH_BASE_URL}/verify-reset-otp`, {
+  async verifyResetOtp(data: { email: string; otp: string }): Promise<OtpResponse & { resetToken?: string }> {
+    return fetchJson<OtpResponse & { resetToken?: string }>(`${AUTH_BASE_URL}/verify-reset-otp`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -96,7 +96,7 @@ export const authApi = {
     });
   },
 
-  async resetPassword(data: { email: string; newPassword: string }): Promise<OtpResponse> {
+  async resetPassword(data: { email: string; newPassword: string; resetToken: string }): Promise<OtpResponse> {
     return fetchJson<OtpResponse>(`${AUTH_BASE_URL}/reset-password`, {
       method: 'POST',
       body: JSON.stringify(data),

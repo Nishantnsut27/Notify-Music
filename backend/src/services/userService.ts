@@ -376,6 +376,7 @@ export class UserService {
       Favorite.deleteMany({ user: userId }),
       RecentlyPlayed.deleteMany({ user: userId }),
       ListeningHistory.deleteMany({ user: userId }),
+      SearchHistory.deleteMany({ user: userId }),
       User.deleteOne({ _id: userId }),
     ]);
 

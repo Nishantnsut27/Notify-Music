@@ -19,6 +19,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBackTo
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetToken, setResetToken] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [otpError, setOtpError] = useState<string | null>(null);
@@ -52,7 +53,10 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBackTo
 
     setIsLoading(true);
     try {
-      await authApi.verifyResetOtp({ email: email.trim(), otp });
+      const res = await authApi.verifyResetOtp({ email: email.trim(), otp });
+      if (res.resetToken) {
+        setResetToken(res.resetToken);
+      }
       setStep('newPassword');
     } catch (err) {
       setOtpError(err instanceof ApiError ? err.message : 'Invalid verification code.');
@@ -85,7 +89,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBackTo
 
     setIsLoading(true);
     try {
-      await authApi.resetPassword({ email: email.trim(), newPassword });
+      await authApi.resetPassword({ email: email.trim(), newPassword, resetToken });
       setSuccessMsg('Password updated successfully.');
       setTimeout(() => onSuccess(), 1500);
     } catch (err) {

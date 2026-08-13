@@ -94,8 +94,19 @@ export async function fetchJson<T>(
       const errorMessage = data?.error || data?.message || `HTTP error status ${response.status}`;
 
       if (retries > 0 && (response.status === 429 || response.status >= 500)) {
-        await new Promise((res) => setTimeout(res, delay));
-        return fetchJson<T>(url, options, retries - 1, delay * 2, hasRefreshedToken);
+        const method = options?.method?.toUpperCase() || 'GET';
+        if (method === 'GET') {
+          let retryDelay = delay;
+          if (response.status === 429) {
+            const retryAfter = response.headers.get('Retry-After');
+            if (retryAfter) {
+              const parsed = parseInt(retryAfter, 10);
+              if (!isNaN(parsed)) retryDelay = parsed * 1000;
+            }
+          }
+          await new Promise((res) => setTimeout(res, retryDelay));
+          return fetchJson<T>(url, options, retries - 1, retryDelay > delay ? retryDelay : delay * 2, hasRefreshedToken);
+        }
       }
 
       throw new ApiError(errorMessage, response.status, data);

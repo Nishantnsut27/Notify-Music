@@ -69,7 +69,6 @@ export function PlayerControls() {
     addToFavorites,
     removeFromFavorites,
     favorites,
-    navigateToArtist,
   } = usePlayerStore();
 
   const isDraggingProgress = useRef(false);
@@ -329,7 +328,7 @@ export function PlayerControls() {
           )}
         </div>
 
-        <div className="track-info" onClick={() => navigateToArtist(currentTrack.artist_id || currentTrack.artist_name, currentTrack.artist_name)} style={{ cursor: 'pointer' }}>
+        <div className="track-info">
           <div className="title-1">{currentTrack.name}</div>
           <div className="title-2">{currentTrack.artist_name}</div>
         </div>
