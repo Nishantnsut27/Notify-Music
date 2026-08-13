@@ -276,7 +276,7 @@ export class AuthService {
     await EmailService.sendPasswordResetOtp(normalizedEmail, otp);
   }
 
-  static async verifyResetOtp(email: string, otp: string): Promise<void> {
+  static async verifyResetOtp(email: string, otp: string): Promise<{ resetToken: string }> {
     const normalizedEmail = email.toLowerCase().trim();
 
     const user = await User.findOne({ email: normalizedEmail }).select(
@@ -319,7 +319,16 @@ export class AuthService {
     user.resetOtpHash = undefined;
     user.resetOtpExpiresAt = undefined;
     user.resetAttempts = 0;
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    
+    user.passwordResetToken = hashedResetToken;
+    user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+
     await user.save();
+
+    return { resetToken };
   }
 
   static async resendResetOtp(email: string): Promise<void> {
@@ -341,12 +350,23 @@ export class AuthService {
     await EmailService.sendPasswordResetOtp(normalizedEmail, otp);
   }
 
-  public static async resetPassword(email: string, newPassword: string): Promise<void> {
+  public static async resetPassword(email: string, newPassword: string, resetToken: string): Promise<void> {
     const normalizedEmail = email.toLowerCase().trim();
 
-    const user = await User.findOne({ email: normalizedEmail }).select('+password');
+    if (!resetToken) {
+      throw new AppError('Reset authorization token is required.', 400);
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    const user = await User.findOne({ 
+      email: normalizedEmail,
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: new Date() }
+    }).select('+password +passwordResetToken +passwordResetExpires');
+
     if (!user) {
-      throw new AppError('User not found.', 404);
+      throw new AppError('Invalid or expired reset authorization token.', 400);
     }
 
     user.password = await hashPassword(newPassword);
@@ -354,6 +374,9 @@ export class AuthService {
     if (user.refreshTokenHash) {
       user.refreshTokenHash = undefined;
     }
+    
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
 
     await user.save();
   }

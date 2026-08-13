@@ -190,11 +190,12 @@ export class AuthController {
         return;
       }
 
-      await AuthService.verifyResetOtp(email, otp);
+      const { resetToken } = await AuthService.verifyResetOtp(email, otp);
 
       res.status(200).json({
         success: true,
         message: 'Reset code verified successfully.',
+        resetToken,
       });
     } catch (error) {
       next(error);
@@ -222,13 +223,13 @@ export class AuthController {
 
   public static async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { email, newPassword } = req.body;
-      if (!email || !newPassword) {
-        res.status(400).json({ success: false, error: 'Email and new password are required.' });
+      const { email, newPassword, resetToken } = req.body;
+      if (!email || !newPassword || !resetToken) {
+        res.status(400).json({ success: false, error: 'Email, new password, and reset authorization are required.' });
         return;
       }
 
-      await AuthService.resetPassword(email, newPassword);
+      await AuthService.resetPassword(email, newPassword, resetToken);
 
       res.status(200).json({
         success: true,
