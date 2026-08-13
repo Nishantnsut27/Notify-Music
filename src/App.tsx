@@ -11,8 +11,6 @@ import { EmptyFavorites, EmptyPlaylists, EmptyRecentlyPlayed } from './component
 
 const PersonalizedHome = lazy(() => import('./components/PersonalizedHome').then(m => ({ default: m.PersonalizedHome })));
 const GuestHome = lazy(() => import('./components/GuestHome').then(m => ({ default: m.GuestHome })));
-const ArtistPage = lazy(() => import('./components/ArtistPage').then(m => ({ default: m.ArtistPage })));
-const AlbumPage = lazy(() => import('./components/AlbumPage').then(m => ({ default: m.AlbumPage })));
 const RelatedMusic = lazy(() => import('./components/RelatedMusic').then(m => ({ default: m.RelatedMusic })));
 const DiscoverySection = lazy(() => import('./components/DiscoverySection').then(m => ({ default: m.DiscoverySection })));
 import { usePlayerStore } from './store/playerStore';
@@ -96,10 +94,6 @@ function App() {
     toggleSidebar,
     deletePlaylist,
     renamePlaylist,
-    currentArtistId,
-    currentArtistName,
-    currentAlbumId,
-    currentAlbumName,
   } = usePlayerStore();
 
   useKeyboardShortcuts();
@@ -131,18 +125,6 @@ function App() {
         usePlayerStore.getState().setCurrentView('playlists');
       } else if (path.includes('/recent')) {
         usePlayerStore.getState().setCurrentView('recent');
-      } else if (path.includes('/artist')) {
-        const parts = path.split('/');
-        const artistIdx = parts.indexOf('artist');
-        if (artistIdx >= 0 && parts[artistIdx + 1]) {
-          usePlayerStore.getState().navigateToArtist(decodeURIComponent(parts[artistIdx + 1]), decodeURIComponent(parts[artistIdx + 1]));
-        }
-      } else if (path.includes('/album')) {
-        const parts = path.split('/');
-        const albumIdx = parts.indexOf('album');
-        if (albumIdx >= 0 && parts[albumIdx + 1]) {
-          usePlayerStore.getState().navigateToAlbum(decodeURIComponent(parts[albumIdx + 1]), decodeURIComponent(parts[albumIdx + 1]));
-        }
       } else if (path === '/' || path.includes('/search')) {
         usePlayerStore.getState().setCurrentView('search');
       }
@@ -170,10 +152,7 @@ function App() {
 
   useEffect(() => {
     let targetPath = '/';
-    if (currentView === 'search') targetPath = '/';
-    else if (currentView === 'artist') targetPath = `/artist/${encodeURIComponent(currentArtistId || currentArtistName || '')}`;
-    else if (currentView === 'album') targetPath = `/album/${encodeURIComponent(currentAlbumId || currentAlbumName || '')}`;
-    else targetPath = `/${currentView}`;
+    if (currentView !== 'search') targetPath = `/${currentView}`;
     if (window.location.pathname !== targetPath) {
       try {
         window.history.pushState(null, '', targetPath);
@@ -181,7 +160,7 @@ function App() {
         void e;
       }
     }
-  }, [currentView, currentArtistId, currentArtistName, currentAlbumId, currentAlbumName]);
+  }, [currentView]);
 
   const handleEditPlaylist = (playlistId: string, currentName: string) => {
     setPlaylistToRename({ id: playlistId, name: currentName });
@@ -338,12 +317,6 @@ function App() {
             <Suspense fallback={null}><GuestHome /></Suspense>
           </div>
         );
-
-      case 'artist':
-        return <Suspense fallback={null}><ArtistPage /></Suspense>;
-
-      case 'album':
-        return <Suspense fallback={null}><AlbumPage /></Suspense>;
 
       case 'favorites':
         return (

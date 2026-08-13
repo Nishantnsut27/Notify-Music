@@ -1,4 +1,4 @@
-export const BACKEND_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
+export const BACKEND_URL = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_API_URL || 'http://localhost:5000';
 export const API_BASE_URL = `${BACKEND_URL}/api/music`;
 
 export const API_ENDPOINTS = {
@@ -6,6 +6,8 @@ export const API_ENDPOINTS = {
   TRENDING: `${API_BASE_URL}/trending`,
   SONG: (id: string) => `${API_BASE_URL}/song/${encodeURIComponent(id)}`,
   ARTIST: (id: string) => `${API_BASE_URL}/artist/${encodeURIComponent(id)}`,
+  ALBUM: (id: string) => `${API_BASE_URL}/album/${encodeURIComponent(id)}`,
+  SUGGESTIONS: (id: string) => `${API_BASE_URL}/suggestions/${encodeURIComponent(id)}`,
 } as const;
 
 export const STORAGE_KEYS = {
@@ -13,6 +15,7 @@ export const STORAGE_KEYS = {
   PLAYLISTS: 'playlists',
   FAVORITES: 'favorites',
   THEME: 'theme',
+  PLAYBACK: 'player-playback',
 } as const;
 
 export const VIEWS = {

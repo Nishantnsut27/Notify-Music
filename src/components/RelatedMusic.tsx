@@ -4,7 +4,7 @@ import { MusicAPI } from '../services/musicApi';
 import { TrackListModern } from './TrackListModern';
 
 export function RelatedMusic() {
-  const { currentTrack, relatedMusic, setRelatedMusic, navigateToArtist } = usePlayerStore();
+  const { currentTrack, relatedMusic, setRelatedMusic } = usePlayerStore();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,12 +52,7 @@ export function RelatedMusic() {
     <div className="related-music">
       {relatedMusic?.moreFromArtist && relatedMusic.moreFromArtist.length > 0 && (
         <section>
-          <div className="section-header-row">
-            <h2 className="section-title">More from {currentTrack.artist_name}</h2>
-            <button className="see-all-btn" onClick={() => navigateToArtist(currentTrack.artist_id || currentTrack.artist_name, currentTrack.artist_name)}>
-              See all
-            </button>
-          </div>
+          <h2 className="section-title">More from {currentTrack.artist_name}</h2>
           <TrackListModern tracks={relatedMusic.moreFromArtist} showAddToPlaylist />
         </section>
       )}

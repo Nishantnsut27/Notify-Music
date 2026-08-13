@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { Track, Playlist, PlaylistTrack, PlayerState, SearchState } from '../types/types';
+import type { Track, Playlist, PlaylistTrack, PlayerState, SearchState, RelatedMusic } from '../types/types';
 import { STORAGE_KEYS, PLAYER_DEFAULTS } from '../config/constants';
 import { userApi } from '../services/userApi';
 import { useAuthStore } from './authStore';
@@ -21,6 +21,8 @@ interface PlayerStore extends PlayerState {
   addToQueue: (track: Track) => void;
   removeFromQueue: (index: number) => void;
   clearQueue: () => void;
+  setBuffering: (buffering: boolean) => void;
+  setPlaybackError: (error: string | null) => void;
 }
 
 interface SearchStore extends SearchState {
@@ -38,6 +40,9 @@ interface PlaylistStore {
   favorites: Track[];
   recentlyPlayed: Track[];
   listeningHistory: Track[];
+  relatedMusic: RelatedMusic | null;
+  recommendations: Track[];
+  autoplayEnabled: boolean;
 
   syncCloudUserData: () => Promise<void>;
   createPlaylist: (name: string) => Playlist;
@@ -50,16 +55,19 @@ interface PlaylistStore {
   clearFavorites: () => void;
   exportPlaylist: (id: string) => string;
   importPlaylist: (data: string) => void;
+  setRelatedMusic: (data: RelatedMusic | null) => void;
+  setRecommendations: (tracks: Track[]) => void;
+  clearRecommendations: () => void;
 }
 
 interface UIStore {
   isSidebarOpen: boolean;
-  currentView: 'search' | 'playlists' | 'favorites' | 'recently-played' | 'history';
+  currentView: 'search' | 'playlists' | 'favorites' | 'recently-played' | 'history' | 'recent';
   theme: 'light' | 'dark';
 
   toggleSidebar: () => void;
   closeSidebar: () => void;
-  setCurrentView: (view: 'search' | 'playlists' | 'favorites' | 'recently-played' | 'history') => void;
+  setCurrentView: (view: UIStore['currentView']) => void;
   setTheme: (theme: 'light' | 'dark') => void;
 }
 
@@ -159,6 +167,12 @@ export const usePlayerStore = create<AppStore>()(
     favorites: loadFromLocalStorage(STORAGE_KEYS.FAVORITES, []),
     recentlyPlayed: [],
     listeningHistory: [],
+    relatedMusic: null,
+    recommendations: [],
+    autoplayEnabled: true,
+
+    isBuffering: false,
+    playbackError: null,
 
     isSidebarOpen: false,
     currentView: 'search',
@@ -482,11 +496,18 @@ export const usePlayerStore = create<AppStore>()(
 
     toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
     closeSidebar: () => set({ isSidebarOpen: false }),
-    setCurrentView: (view: 'search' | 'playlists' | 'favorites' | 'recently-played' | 'history') => set({ currentView: view }),
+    setCurrentView: (view) => set({ currentView: view }),
 
     setTheme: (theme: 'light' | 'dark') => {
       set({ theme });
       saveToLocalStorage(STORAGE_KEYS.THEME, theme);
-    }
+    },
+
+    setBuffering: (isBuffering: boolean) => set({ isBuffering }),
+    setPlaybackError: (playbackError: string | null) => set({ playbackError }),
+
+    setRelatedMusic: (data: RelatedMusic | null) => set({ relatedMusic: data }),
+    setRecommendations: (tracks: Track[]) => set({ recommendations: tracks }),
+    clearRecommendations: () => set({ recommendations: [] }),
   }))
 );
