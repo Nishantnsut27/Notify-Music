@@ -112,6 +112,7 @@ export const useAuthStore = create<AuthState>((set) => ({
           error: null,
           currentView: 'search',
         });
+        window.dispatchEvent(new CustomEvent('reset-search-state'));
       });
     }
   },
