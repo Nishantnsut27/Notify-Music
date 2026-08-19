@@ -91,9 +91,14 @@ export function SearchBar() {
   }, [clearResults, saveHistory, setError, setLoading, setResults, setStoreQuery, currentView, setCurrentView]);
 
   useEffect(() => {
-    if (!debouncedQuery.trim()) { requestRef.current?.abort(); setSuggestions([]); return; }
+    if (currentView !== 'search') return;
+    if (!debouncedQuery.trim()) {
+      requestRef.current?.abort();
+      setSuggestions([]);
+      return;
+    }
     void performSearch(debouncedQuery, true);
-  }, [debouncedQuery, performSearch]);
+  }, [debouncedQuery, currentView, performSearch]);
 
   useEffect(() => {
     const runExternalSearch = (event: Event) => {
