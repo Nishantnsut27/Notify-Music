@@ -107,12 +107,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         const store = usePlayerStore.getState();
         store.clearResults();
         usePlayerStore.setState({
-          favorites: [],
-          playlists: [],
-          recentlyPlayed: [],
-          listeningHistory: [],
-          relatedMusic: null,
-          recommendations: [],
+          query: '',
           isLoading: false,
           error: null,
           currentView: 'search',
