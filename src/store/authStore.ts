@@ -106,12 +106,26 @@ export const useAuthStore = create<AuthState>((set) => ({
       import('./playerStore').then(({ usePlayerStore }) => {
         const store = usePlayerStore.getState();
         store.clearResults();
+        store.clearQueue();
+        store.clearRecommendations();
         usePlayerStore.setState({
           query: '',
           isLoading: false,
           error: null,
           currentView: 'search',
+          recentlyPlayed: [],
+          listeningHistory: [],
+          favorites: [],
+          playlists: [],
+          relatedMusic: null,
         });
+        try {
+          localStorage.removeItem('playlists');
+          localStorage.removeItem('favorites');
+        } catch {
+          // Ignore storage access errors during logout cleanup.
+        }
+        sessionStorage.removeItem('player-playback');
         window.dispatchEvent(new CustomEvent('reset-search-state'));
       });
     }
