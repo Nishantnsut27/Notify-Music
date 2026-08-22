@@ -29,21 +29,7 @@ app.use(helmet({
 }));
 
 const corsOptions: cors.CorsOptions = {
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-
-    const isAllowed =
-      config.allowedOrigins.includes('*') ||
-      config.allowedOrigins.includes(origin) ||
-      (config.nodeEnv === 'development' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
-
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      console.warn(`⚠️ [CORS] Blocked request from origin: ${origin}`);
-      callback(null, false);
-    }
-  },
+  origin: true, // Reflect the request origin — allows all origins while supporting credentials
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
