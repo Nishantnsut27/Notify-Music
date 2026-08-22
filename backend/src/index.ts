@@ -19,6 +19,10 @@ const app = express();
 
 app.disable('x-powered-by');
 
+// Trust the first proxy hop (required on Render/Heroku/etc. for express-rate-limit
+// to correctly read the real client IP from the X-Forwarded-For header)
+app.set('trust proxy', 1);
+
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' }
