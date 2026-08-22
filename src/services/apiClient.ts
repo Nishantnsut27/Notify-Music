@@ -17,7 +17,7 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-export const API_BASE_URL = (import.meta.env as Record<string, string | undefined>).VITE_API_URL || 'http://localhost:5000';
+export const API_BASE_URL = (import.meta.env as Record<string, string | undefined>).VITE_API_URL || 'https://notify-music.onrender.com';
 
 import { getStoredToken, setStoredToken, removeStoredToken, isRememberMe } from './tokenStorage';
 
