@@ -2,7 +2,7 @@
 
 > Where Music Finds You
 
-[Live Demo](https://notify-music.vercel.app) · [Backend Health](https://notify-music-player.onrender.com/health) · [GitHub](https://github.com/Nishantnsut27/Notify-Music)
+[Live Demo](https://notify-music.vercel.app) · [Backend Health](https://notify-music.onrender.com/health) · [GitHub](https://github.com/Nishantnsut27/Notify-Music)
 
 ---
 
@@ -88,7 +88,7 @@ Authentication (JWT + bcrypt)
 Email Service (Brevo/Sendinblue)
 ```
 
-The frontend is a single-page application deployed on Vercel. It uses Zustand for state management with localStorage persistence and communicates with the backend via a fetch client that handles automatic 401 token refresh. The backend runs on Express.js with MongoDB for persistent storage, Cloudinary for avatar uploads, and Brevo for transactional email.
+The frontend is a single-page application deployed on Vercel. It uses Zustand for state management with localStorage persistence and communicates with the production backend at `https://notify-music.onrender.com` by default. Set `VITE_API_URL` to override this URL for local or alternate deployments. The backend runs on Express.js with MongoDB for persistent storage, Cloudinary for avatar uploads, and Brevo for transactional email.
 
 ---
 
