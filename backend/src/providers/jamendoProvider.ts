@@ -102,7 +102,9 @@ export class JamendoProvider implements IMusicProvider {
         params: this.getDefaultParams({
           album_id: id,
           include: 'musicinfo',
-          audioformat: 'mp31'
+          audioformat: 'mp31',
+          limit: 200,
+          order: 'track_position'
         })
       });
       const results = response.data?.results;

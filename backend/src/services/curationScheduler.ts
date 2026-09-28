@@ -1,22 +1,30 @@
-import { curationService } from './curationService.js';
+import { curationService, type SectionRefreshOutcome } from './curationService.js';
 import { curatedSectionRepository } from './curatedSectionRepository.js';
 import { isGroqConfigured } from './groqService.js';
 import {
   CURATION_ENGINE_CONFIG,
   CURATION_SCHEDULE,
-  CURATED_SECTIONS,
   type CuratedSectionId
 } from '../config/curationConfig.js';
 import { config } from '../config/config.js';
 import { logger, serializeError } from '../utils/logger.js';
 
 const SCOPE = 'CurationScheduler';
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface ScheduledJob {
   sectionId: CuratedSectionId;
   hour: number;
   minute: number;
   cycle: number;
+}
+
+interface ZonedClock {
+  year: number;
+  month: number;
+  day: number;
+  /** Zoned wall-clock time minus UTC, in ms. */
+  offsetMs: number;
 }
 
 export function buildScheduledJobs(): ScheduledJob[] {
@@ -39,7 +47,7 @@ export function buildScheduledJobs(): ScheduledJob[] {
   return jobs;
 }
 
-function getIstNow(): { hour: number; minute: number; dateKey: string } {
+function getZonedClock(nowMs: number): ZonedClock {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: CURATION_SCHEDULE.timezone,
     hour12: false,
@@ -47,29 +55,43 @@ function getIstNow(): { hour: number; minute: number; dateKey: string } {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    second: '2-digit'
   });
 
-  const parts = formatter.formatToParts(new Date());
-  const lookup = (type: string): string => parts.find(part => part.type === type)?.value ?? '00';
+  const parts = formatter.formatToParts(new Date(nowMs));
+  const lookup = (type: string): number => parseInt(parts.find(part => part.type === type)?.value ?? '0', 10);
 
-  const hour = parseInt(lookup('hour'), 10) % 24;
+  const year = lookup('year');
+  const month = lookup('month');
+  const day = lookup('day');
+  const wallMs = Date.UTC(year, month - 1, day, lookup('hour') % 24, lookup('minute'), lookup('second'));
 
-  return {
-    hour,
-    minute: parseInt(lookup('minute'), 10),
-    dateKey: `${lookup('year')}-${lookup('month')}-${lookup('day')}`
-  };
+  return { year, month, day, offsetMs: wallMs - Math.floor(nowMs / 1000) * 1000 };
 }
 
+/** Absolute time of the job's most recent occurrence at or before `nowMs`. */
+function lastOccurrence(job: ScheduledJob, clock: ZonedClock, nowMs: number): number {
+  const todayAt = Date.UTC(clock.year, clock.month - 1, clock.day, job.hour, job.minute) - clock.offsetMs;
+  return todayAt <= nowMs ? todayAt : todayAt - DAY_MS;
+}
+
+/**
+ * Every tick compares each section's generation time with its most recent scheduled slot and
+ * queues the ones that are behind. Matching slots by exact minute (the previous approach) silently
+ * dropped any slot the process slept, restarted or deployed through.
+ */
 export class CurationScheduler {
   private timer: NodeJS.Timeout | null = null;
-  private startupTimers: NodeJS.Timeout[] = [];
+  private readonly pendingTimers = new Set<NodeJS.Timeout>();
   private readonly jobs = buildScheduledJobs();
-  private readonly runningSections = new Set<CuratedSectionId>();
-  private readonly completedMarkers = new Set<string>();
-  private cycleInProgress = false;
+  private readonly satisfiedSlots = new Map<CuratedSectionId, number>();
+  private readonly attempts = new Map<string, { count: number; lastAttemptAt: number }>();
+  private readonly queuedSections = new Set<CuratedSectionId>();
+  private queue: Promise<void> = Promise.resolve();
+  private checking = false;
   private started = false;
+  private ignoreSlotsBefore = 0;
 
   start(): void {
     if (this.started) {
@@ -90,24 +112,24 @@ export class CurationScheduler {
     }
 
     this.started = true;
+    this.ignoreSlotsBefore = config.curationBackfillOnStartup ? 0 : Date.now();
+
     this.timer = setInterval(() => {
       void this.tick();
     }, CURATION_ENGINE_CONFIG.schedulerTickMs);
     this.timer.unref?.();
+    this.delay(CURATION_ENGINE_CONFIG.startupBackfillDelayMs).then(() => this.tick());
 
     logger.info(SCOPE, 'Curation scheduler started', {
       timezone: CURATION_SCHEDULE.timezone,
       configuredKeys: config.groqApiKeys.length,
+      backfillOnStartup: config.curationBackfillOnStartup,
       schedule: this.jobs.map(job => ({
         cycle: job.cycle,
         sectionId: job.sectionId,
-        atIst: `${String(job.hour).padStart(2, '0')}:${String(job.minute).padStart(2, '0')}`
+        at: `${String(job.hour).padStart(2, '0')}:${String(job.minute).padStart(2, '0')}`
       }))
     });
-
-    if (config.curationBackfillOnStartup) {
-      this.scheduleStartupBackfill();
-    }
   }
 
   stop(): void {
@@ -116,124 +138,125 @@ export class CurationScheduler {
       this.timer = null;
     }
 
-    for (const timer of this.startupTimers) {
+    for (const timer of this.pendingTimers) {
       clearTimeout(timer);
     }
-    this.startupTimers = [];
+    this.pendingTimers.clear();
     this.started = false;
 
     logger.info(SCOPE, 'Curation scheduler stopped');
   }
 
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => {
+      const timer = setTimeout(() => {
+        this.pendingTimers.delete(timer);
+        resolve();
+      }, ms);
+      timer.unref?.();
+      this.pendingTimers.add(timer);
+    });
+  }
+
+  private latestSlotBySection(nowMs: number): Map<CuratedSectionId, number> {
+    const clock = getZonedClock(nowMs);
+    const latest = new Map<CuratedSectionId, number>();
+    for (const job of this.jobs) {
+      const slot = lastOccurrence(job, clock, nowMs);
+      if (slot > (latest.get(job.sectionId) ?? -Infinity)) {
+        latest.set(job.sectionId, slot);
+      }
+    }
+    return latest;
+  }
+
+  private canAttempt(sectionId: CuratedSectionId, slot: number, nowMs: number): boolean {
+    const attempt = this.attempts.get(`${sectionId}@${slot}`);
+    if (!attempt) return true;
+    if (attempt.count >= CURATION_ENGINE_CONFIG.maxRefreshAttemptsPerSlot) return false;
+    return nowMs - attempt.lastAttemptAt >= CURATION_ENGINE_CONFIG.failedRefreshRetryMs;
+  }
+
   private async tick(): Promise<void> {
+    if (!this.started || this.checking) return;
+    this.checking = true;
+
     try {
-      const now = getIstNow();
-      const dueJobs = this.jobs.filter(job => job.hour === now.hour && job.minute === now.minute);
+      const nowMs = Date.now();
+      this.pruneAttempts(nowMs);
 
-      for (const job of dueJobs) {
-        const marker = `${now.dateKey} ${job.hour}:${job.minute} ${job.sectionId}`;
-        if (this.completedMarkers.has(marker)) continue;
+      const pending = [...this.latestSlotBySection(nowMs)].filter(([sectionId, slot]) =>
+        slot >= this.ignoreSlotsBefore
+        && (this.satisfiedSlots.get(sectionId) ?? -Infinity) < slot
+        && !this.queuedSections.has(sectionId)
+        && this.canAttempt(sectionId, slot, nowMs)
+      );
+      if (pending.length === 0) return;
 
-        this.completedMarkers.add(marker);
-        this.pruneMarkers();
-
-        const isCycleStart = job.sectionId === CURATION_SCHEDULE.sectionOrder[0];
-        if (isCycleStart) {
-          if (this.cycleInProgress) {
-            logger.warn(SCOPE, 'Cycle start skipped: previous cycle is still running', { cycle: job.cycle });
-          } else {
-            this.cycleInProgress = true;
-            logger.info(SCOPE, 'Curation cycle started', {
-              cycle: job.cycle,
-              timezone: CURATION_SCHEDULE.timezone,
-              sections: CURATION_SCHEDULE.sectionOrder.length
-            });
-          }
+      const generatedAt = await curatedSectionRepository.getGenerationTimes();
+      for (const [sectionId, slot] of pending) {
+        if ((generatedAt.get(sectionId) ?? 0) >= slot) {
+          this.satisfiedSlots.set(sectionId, slot);
+          continue;
         }
-
-        const isCycleEnd = job.sectionId === CURATION_SCHEDULE.sectionOrder[CURATION_SCHEDULE.sectionOrder.length - 1];
-
-        void this.runSection(job.sectionId, { cycle: job.cycle, trigger: 'schedule' }).finally(() => {
-          if (isCycleEnd) {
-            this.cycleInProgress = false;
-            logger.info(SCOPE, 'Curation cycle completed', { cycle: job.cycle });
-          }
-        });
+        this.enqueue(sectionId, slot);
       }
     } catch (error) {
-      logger.error(SCOPE, 'Scheduler tick failed', { error: serializeError(error) });
+      logger.error(SCOPE, 'Scheduler tick failed; will retry on the next tick', { error: serializeError(error) });
+    } finally {
+      this.checking = false;
     }
   }
 
-  private async runSection(
-    sectionId: CuratedSectionId,
-    context: { cycle?: number; trigger: 'schedule' | 'startup' | 'manual' }
-  ): Promise<void> {
-    if (this.runningSections.has(sectionId)) {
-      logger.warn(SCOPE, 'Section refresh skipped: already running', { sectionId, ...context });
+  /** Refreshes run one at a time so a wake-up with many stale sections doesn't burst the Groq keys. */
+  private enqueue(sectionId: CuratedSectionId, slot: number): void {
+    this.queuedSections.add(sectionId);
+    logger.info(SCOPE, 'Section refresh queued', { sectionId, slot: new Date(slot).toISOString() });
+
+    this.queue = this.queue.then(async () => {
+      try {
+        if (!this.started) return;
+        const outcome = await this.runSection(sectionId, slot);
+        this.recordOutcome(sectionId, slot, outcome);
+        await this.delay(CURATION_ENGINE_CONFIG.startupBackfillSpacingMs);
+      } finally {
+        this.queuedSections.delete(sectionId);
+      }
+    }).catch(error => {
+      logger.error(SCOPE, 'Queued section refresh failed', { sectionId, error: serializeError(error) });
+    });
+  }
+
+  private recordOutcome(sectionId: CuratedSectionId, slot: number, outcome: SectionRefreshOutcome | null): void {
+    if (outcome?.status === 'saved' || outcome?.reason === 'already_fresh') {
+      this.satisfiedSlots.set(sectionId, slot);
       return;
     }
+    // Another instance holds the lock; the next tick will see its result or retry the lock.
+    if (outcome?.reason === 'refresh_in_progress') return;
 
-    this.runningSections.add(sectionId);
+    const key = `${sectionId}@${slot}`;
+    const previous = this.attempts.get(key);
+    this.attempts.set(key, { count: (previous?.count ?? 0) + 1, lastAttemptAt: Date.now() });
+  }
 
+  private async runSection(sectionId: CuratedSectionId, slot: number): Promise<SectionRefreshOutcome | null> {
     try {
-      const outcome = await curationService.refreshSection(sectionId);
-      logger.info(SCOPE, 'Section refresh finished', { ...context, ...outcome });
+      const outcome = await curationService.refreshSection(sectionId, { notBefore: new Date(slot) });
+      logger.info(SCOPE, 'Section refresh finished', { ...outcome });
+      return outcome;
     } catch (error) {
-      logger.error(SCOPE, 'Section refresh threw unexpectedly', {
-        sectionId,
-        ...context,
-        error: serializeError(error)
-      });
-    } finally {
-      this.runningSections.delete(sectionId);
+      logger.error(SCOPE, 'Section refresh threw unexpectedly', { sectionId, error: serializeError(error) });
+      return null;
     }
   }
 
-  private scheduleStartupBackfill(): void {
-    const timer = setTimeout(() => {
-      void (async () => {
-        try {
-          const stale = await curatedSectionRepository.findStaleOrMissingSectionIds(
-            CURATION_ENGINE_CONFIG.staleAfterMs
-          );
-
-          if (stale.length === 0) {
-            logger.info(SCOPE, 'Startup backfill skipped: all curated sections are fresh');
-            return;
-          }
-
-          logger.info(SCOPE, 'Startup backfill started', { sections: stale, count: stale.length });
-
-          for (let index = 0; index < stale.length; index++) {
-            if (index > 0) {
-              await new Promise(resolve => {
-                const spacing = setTimeout(resolve, CURATION_ENGINE_CONFIG.startupBackfillSpacingMs);
-                spacing.unref?.();
-                this.startupTimers.push(spacing);
-              });
-            }
-
-            await this.runSection(stale[index], { trigger: 'startup' });
-          }
-
-          logger.info(SCOPE, 'Startup backfill completed', { sections: stale.length });
-        } catch (error) {
-          logger.error(SCOPE, 'Startup backfill failed', { error: serializeError(error) });
-        }
-      })();
-    }, CURATION_ENGINE_CONFIG.startupBackfillDelayMs);
-
-    timer.unref?.();
-    this.startupTimers.push(timer);
-  }
-
-  private pruneMarkers(): void {
-    const maxMarkers = CURATED_SECTIONS.length * CURATION_SCHEDULE.cycleStartTimes.length * 2;
-    while (this.completedMarkers.size > maxMarkers) {
-      const oldest = this.completedMarkers.values().next().value;
-      if (oldest === undefined) break;
-      this.completedMarkers.delete(oldest);
+  private pruneAttempts(nowMs: number): void {
+    for (const key of this.attempts.keys()) {
+      const slot = Number(key.slice(key.lastIndexOf('@') + 1));
+      if (nowMs - slot > 2 * DAY_MS) {
+        this.attempts.delete(key);
+      }
     }
   }
 }

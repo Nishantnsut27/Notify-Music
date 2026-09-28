@@ -51,15 +51,65 @@ export function getCuratedSectionDefinition(sectionId: CuratedSectionId): Curate
   return definition;
 }
 
-export const CURATION_SCHEDULE = {
-  timezone: 'Asia/Kolkata',
-  cycleStartTimes: [
-    { hour: 3, minute: 0 },
-    { hour: 13, minute: 15 }
-  ],
-  sectionIntervalMinutes: 5,
+export interface CycleStartTime {
+  hour: number;
+  minute: number;
+}
+
+const DEFAULT_TIMEZONE = 'Asia/Kolkata';
+const DEFAULT_CYCLE_START_TIMES: CycleStartTime[] = [
+  { hour: 3, minute: 0 },
+  { hour: 13, minute: 15 }
+];
+
+/** Non-numeric or non-positive values fall back instead of becoming NaN timers and dates. */
+function readPositiveInt(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readFraction(name: string, fallback: number): number {
+  const parsed = Number.parseFloat(process.env[name] ?? '');
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 1 ? parsed : fallback;
+}
+
+function readTimezone(name: string, fallback: string): string {
+  const value = (process.env[name] ?? '').trim();
+  if (!value) return fallback;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value });
+    return value;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Parses "03:00,13:15" style lists. */
+function readCycleStartTimes(name: string, fallback: CycleStartTime[]): CycleStartTime[] {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+
+  const times = raw
+    .split(',')
+    .map(entry => /^\s*(\d{1,2}):(\d{2})\s*$/.exec(entry))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map(match => ({ hour: Number(match[1]), minute: Number(match[2]) }))
+    .filter(time => time.hour < 24 && time.minute < 60);
+
+  return times.length > 0 ? times : fallback;
+}
+
+export const CURATION_SCHEDULE: {
+  timezone: string;
+  cycleStartTimes: readonly CycleStartTime[];
+  sectionIntervalMinutes: number;
+  sectionOrder: readonly CuratedSectionId[];
+} = {
+  timezone: readTimezone('CURATION_TIMEZONE', DEFAULT_TIMEZONE),
+  cycleStartTimes: readCycleStartTimes('CURATION_CYCLE_TIMES', DEFAULT_CYCLE_START_TIMES),
+  sectionIntervalMinutes: readPositiveInt('CURATION_SECTION_INTERVAL_MINUTES', 5),
   sectionOrder: CURATED_SECTION_IDS
-} as const;
+};
 
 export const CURATION_ENGINE_CONFIG = {
   candidateLimit: 25,
@@ -68,15 +118,19 @@ export const CURATION_ENGINE_CONFIG = {
   minTracksToReplace: 5,
   resolutionConcurrency: 4,
   providerSearchLimit: 8,
-  matchConfidenceThreshold: 0.55,
+  matchConfidenceThreshold: readFraction('CURATION_MATCH_THRESHOLD', 0.55),
+  /** A title-only match must not pass: the artist has to resemble the suggestion too. */
+  minArtistSimilarity: 0.5,
   llmTemperature: 0.4,
   maxGroqAttempts: 6,
-  rateLimitCooldownMs: parseInt(process.env.CURATION_KEY_COOLDOWN_MS || '90000', 10),
-  authFailureCooldownMs: parseInt(process.env.CURATION_KEY_AUTH_COOLDOWN_MS || '3600000', 10),
-  sectionCacheTtlMs: parseInt(process.env.CURATION_SECTION_CACHE_TTL_MS || '60000', 10),
-  staleAfterMs: parseInt(process.env.CURATION_STALE_AFTER_MS || '46800000', 10),
+  rateLimitCooldownMs: readPositiveInt('CURATION_KEY_COOLDOWN_MS', 90000),
+  maxRateLimitCooldownMs: 6 * 60 * 60 * 1000,
+  authFailureCooldownMs: readPositiveInt('CURATION_KEY_AUTH_COOLDOWN_MS', 3600000),
+  sectionCacheTtlMs: readPositiveInt('CURATION_SECTION_CACHE_TTL_MS', 60000),
   schedulerTickMs: 30000,
-  startupBackfillDelayMs: parseInt(process.env.CURATION_STARTUP_DELAY_MS || '20000', 10),
-  startupBackfillSpacingMs: parseInt(process.env.CURATION_STARTUP_SPACING_MS || '15000', 10),
-  sectionRefreshLockMs: parseInt(process.env.CURATION_SECTION_REFRESH_LOCK_MS || '900000', 10)
+  startupBackfillDelayMs: readPositiveInt('CURATION_STARTUP_DELAY_MS', 20000),
+  startupBackfillSpacingMs: readPositiveInt('CURATION_STARTUP_SPACING_MS', 15000),
+  failedRefreshRetryMs: readPositiveInt('CURATION_RETRY_AFTER_FAILURE_MS', 30 * 60 * 1000),
+  maxRefreshAttemptsPerSlot: 3,
+  sectionRefreshLockMs: readPositiveInt('CURATION_SECTION_REFRESH_LOCK_MS', 900000)
 } as const;

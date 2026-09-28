@@ -34,5 +34,6 @@ const recentlyPlayedSchema = new Schema<IRecentlyPlayed>(
 );
 
 recentlyPlayedSchema.index({ user: 1, playedAt: -1 });
+recentlyPlayedSchema.index({ user: 1, trackId: 1 }, { unique: true });
 
 export const RecentlyPlayed = model<IRecentlyPlayed>('RecentlyPlayed', recentlyPlayedSchema);

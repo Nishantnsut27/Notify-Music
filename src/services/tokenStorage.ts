@@ -1,3 +1,5 @@
+import { STORAGE_KEYS } from '../config/constants';
+
 const TOKEN_KEY = 'notify_auth_token';
 const REMEMBER_KEY = 'notify_remember_me';
 
@@ -27,4 +29,21 @@ export function removeStoredToken(): void {
 
 export function isRememberMe(): boolean {
   return localStorage.getItem(REMEMBER_KEY) === 'true';
+}
+
+export function getLibraryOwner(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.LIBRARY_OWNER);
+  } catch {
+    return null;
+  }
+}
+
+export function setLibraryOwner(userId: string | null): void {
+  try {
+    if (userId) localStorage.setItem(STORAGE_KEYS.LIBRARY_OWNER, userId);
+    else localStorage.removeItem(STORAGE_KEYS.LIBRARY_OWNER);
+  } catch {
+    /* Without storage nothing was persisted for anyone, so there is nothing to attribute. */
+  }
 }

@@ -11,6 +11,9 @@ export function useKeyboardShortcuts() {
       const target = event.target as HTMLElement | null;
 
       if (!target) return;
+      // A focused control already acted on this key, or it belongs to the browser/OS.
+      if (event.defaultPrevented) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (target.isContentEditable) return;
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
 
@@ -23,6 +26,8 @@ export function useKeyboardShortcuts() {
       const code = event.code;
 
       if (key === ' ' || code === 'Space') {
+        // Space activates the focused control itself; toggling here as well would undo it.
+        if (target.closest('button, a, [role="button"], [role="option"], input, textarea, select, [contenteditable]')) return;
         event.preventDefault();
         if (store.currentTrack) {
           store.setIsPlaying(!store.isPlaying);

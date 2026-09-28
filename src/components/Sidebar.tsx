@@ -170,6 +170,10 @@ export function Sidebar() {
     openPlaylist,
   } = usePlayerStore();
 
+  /* Outside taps are handled by the overlay's own click, not by a document
+     touchstart/mousedown listener. Closing on touchstart unmounted the overlay
+     before the browser synthesized the click, so that click landed on whatever
+     was underneath — usually a track, which then started playing. */
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isSidebarOpen && window.innerWidth <= 768) {
@@ -177,25 +181,8 @@ export function Sidebar() {
       }
     };
 
-    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
-      if (!isSidebarOpen || window.innerWidth > 768) return;
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      if (target.closest('.sidebar') || target.closest('.mobile-menu-toggle')) {
-        return;
-      }
-      closeSidebar();
-    };
-
     window.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('touchstart', handleOutsideClick, { passive: true });
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('touchstart', handleOutsideClick);
-    };
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSidebarOpen, closeSidebar]);
 
   const handleNavClick = (view: AppView) => {
@@ -244,8 +231,15 @@ export function Sidebar() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `playlist-${id}.json`;
+    a.style.display = 'none';
+    // Attached, and revoked only after the click has been handled: some browsers
+    // ignore clicks on detached anchors or cancel a download whose URL is gone.
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+      a.remove();
+      URL.revokeObjectURL(url);
+    }, 0);
     addToast({
       type: 'info',
       title: 'Playlist Exported',
@@ -456,6 +450,7 @@ export function Sidebar() {
                             }}
                             className="btn btn-ghost btn-icon btn-sm"
                             aria-label="More options"
+                            data-menu-trigger
                           >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <circle cx="12" cy="12" r="1" />

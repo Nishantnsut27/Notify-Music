@@ -1,7 +1,6 @@
 import { formatRelativeTime } from '../utils/formatters';
+import { FALLBACK_ART, showFallbackArt } from '../utils/artwork';
 import type { CuratedSection } from '../types/types';
-
-const FALLBACK_ART = '/Favicon.png';
 
 /** Four covers make a square mosaic; fewer than four falls back to one cover. */
 const MOSAIC_SIZE = 4;
@@ -54,11 +53,7 @@ export function CollectionCard({ section, isOpen, onOpen, panelId }: CollectionC
             alt=""
             loading="lazy"
             decoding="async"
-            onError={(event) => {
-              const img = event.currentTarget;
-              if (img.src.endsWith(FALLBACK_ART)) return;
-              img.src = FALLBACK_ART;
-            }}
+            onError={showFallbackArt}
           />
         ))}
       </span>

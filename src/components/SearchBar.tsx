@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { clearSearchHistory, removeSearch, useSearchHistory } from '../services/searchHistory';
 import { usePlayerStore } from '../store/playerStore';
+import { FALLBACK_ART } from '../utils/artwork';
 import type { Track } from '../types/types';
 
 type DropdownItem = { label: string; kind: 'Song' | 'Artist' | 'Album' | 'Recent'; track: Track | null };
@@ -37,17 +38,30 @@ export function SearchBar() {
   const [isFocused, setIsFocused] = useState(false);
 
   const searchInput = usePlayerStore((state) => state.searchInput);
+  const query = usePlayerStore((state) => state.query);
   const results = usePlayerStore((state) => state.results);
   const isLoading = usePlayerStore((state) => state.isLoading);
+  const isSearchView = usePlayerStore((state) => state.currentView === 'search');
   const setSearchInput = usePlayerStore((state) => state.setSearchInput);
   const clearResults = usePlayerStore((state) => state.clearResults);
   const history = useSearchHistory();
 
-  const hasInput = searchInput.trim().length > 0;
-  const suggestions = useMemo(() => (hasInput ? makeSuggestions(results) : []), [hasInput, results]);
+  const typed = searchInput.trim().toLowerCase();
+  const hasInput = typed.length > 0;
+  /* The results belong to the last committed query, not to whatever is in the
+     field. They only make suggestions while the field still says that query or
+     refines it; anywhere else they would be answers to a different question. */
+  const committed = query.trim().toLowerCase();
+  const resultsMatchInput = isSearchView && hasInput && committed.length > 0 && typed.startsWith(committed);
+  const suggestions = useMemo(
+    () => (resultsMatchInput ? makeSuggestions(results) : []),
+    [resultsMatchInput, results],
+  );
   const dropdownItems: DropdownItem[] = suggestions.length
     ? suggestions
-    : history.map((item) => ({ label: item.query, kind: 'Recent' as const, track: null }));
+    : history
+        .filter((item) => !hasInput || item.query.toLowerCase().includes(typed))
+        .map((item) => ({ label: item.query, kind: 'Recent' as const, track: null }));
 
   /** Hands the query to the engine, which navigates to the search page and runs it. */
   const submitQuery = (value: string) => {
@@ -151,7 +165,15 @@ export function SearchBar() {
             {!suggestions.length && (
               <div className="search-suggestions-heading">
                 <span>Recent searches</span>
-                <button type="button" onClick={() => void clearSearchHistory()}>Clear</button>
+                <button
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    void clearSearchHistory();
+                  }}
+                >
+                  Clear
+                </button>
               </div>
             )}
 
@@ -167,7 +189,7 @@ export function SearchBar() {
                   submitQuery(item.label);
                 }}
               >
-                {item.track && <img src={item.track.image || item.track.album_image || '/Favicon.png'} alt="" />}
+                {item.track && <img src={item.track.image || item.track.album_image || FALLBACK_ART} alt="" />}
                 <span>
                   <strong>{highlight(item.label, searchInput)}</strong>
                   <small>{item.kind}</small>

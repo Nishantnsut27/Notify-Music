@@ -6,19 +6,15 @@ const PROVIDER_PRIORITY: Record<string, number> = {
   jamendo: 3
 };
 
-function normalizeString(str: string): string {
-  return normalizeStringForSearch(str);
-}
-
 export function areSongsDuplicate(s1: Song, s2: Song): boolean {
-  const normTitle1 = normalizeString(s1.name);
-  const normTitle2 = normalizeString(s2.name);
+  const normTitle1 = normalizeStringForSearch(s1.name);
+  const normTitle2 = normalizeStringForSearch(s2.name);
 
   if (!normTitle1 || !normTitle2) return false;
   if (normTitle1 !== normTitle2) return false;
 
-  const normArtist1 = normalizeString(s1.artist_name);
-  const normArtist2 = normalizeString(s2.artist_name);
+  const normArtist1 = normalizeStringForSearch(s1.artist_name);
+  const normArtist2 = normalizeStringForSearch(s2.artist_name);
 
   const artistMatches =
     !normArtist1 ||
@@ -59,15 +55,18 @@ export function deduplicateSongs(songs: Song[]): Song[] {
   return result;
 }
 
+const DERIVATIVE_TITLE_PATTERN = /\b(?:remix|mashup|slowed|reverb|cover)\b/;
+const DERIVATIVE_QUERY_PATTERN = /\b(?:remix|mashup|slowed)\b/;
+
 export function rankSongs(songs: Song[], query: string): Song[] {
   if (!query || !query.trim()) return songs;
-  const normQuery = normalizeString(query);
+  const normQuery = normalizeStringForSearch(query);
   const queryTerms = query.toLowerCase();
 
   const scored = songs.map(song => {
     let score = 0;
-    const normTitle = normalizeString(song.name);
-    const normArtist = normalizeString(song.artist_name);
+    const normTitle = normalizeStringForSearch(song.name);
+    const normArtist = normalizeStringForSearch(song.artist_name);
     const rawTitle = `${song.name} ${song.artist_name}`.toLowerCase();
 
     if (normTitle === normQuery) {
@@ -93,8 +92,8 @@ export function rankSongs(songs: Song[], query: string): Song[] {
     if (song.album_id) score += 3;
     if (song.duration >= 90 && song.duration <= 900) score += 2;
 
-    if (rawTitle.includes('remix') || rawTitle.includes('mashup') || rawTitle.includes('slowed') || rawTitle.includes('reverb') || rawTitle.includes('cover')) {
-      score -= queryTerms.includes('remix') || queryTerms.includes('mashup') || queryTerms.includes('slowed') ? 0 : 20;
+    if (DERIVATIVE_TITLE_PATTERN.test(rawTitle)) {
+      score -= DERIVATIVE_QUERY_PATTERN.test(queryTerms) ? 0 : 20;
     }
 
     if (song.album_image && song.album_image !== '/placeholder-album.svg') {

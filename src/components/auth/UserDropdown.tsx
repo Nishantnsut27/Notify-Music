@@ -40,12 +40,11 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({
       onClose();
     };
 
+    // Taps also emit mousedown; a touchstart listener would close the menu when a scroll starts.
     document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('touchstart', handleOutsideClick);
 
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('touchstart', handleOutsideClick);
     };
   }, [isOpen, onClose]);
 

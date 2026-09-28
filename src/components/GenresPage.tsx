@@ -7,9 +7,8 @@ import { useCuratedSections, findCuratedSection } from '../hooks/useCuratedSecti
 import { usePlayerStore } from '../store/playerStore';
 import { MusicAPI } from '../services/musicApi';
 import { GENRE_CATEGORIES } from '../config/genres';
+import { FALLBACK_ART } from '../utils/artwork';
 import type { CuratedSection, PlaylistSummary } from '../types/types';
-
-const FALLBACK_ART = '/Favicon.png';
 
 /** Queries used to pull real playlists from the catalogue's own editorial sets. */
 const PLAYLIST_QUERIES = ['bollywood', 'punjabi', 'romantic', 'workout'];

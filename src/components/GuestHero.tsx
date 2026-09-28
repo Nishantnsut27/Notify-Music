@@ -1,8 +1,7 @@
 import { usePlayerStore } from '../store/playerStore';
 import { formatArtistNames } from '../utils/formatters';
+import { FALLBACK_ART, showFallbackArt } from '../utils/artwork';
 import type { Track } from '../types/types';
-
-const FALLBACK_ART = '/Favicon.png';
 
 interface GuestHeroProps {
   /** The real track at the head of the backend's curated trending section. */
@@ -101,11 +100,7 @@ export function GuestHero({ track, onPlay, isCurrent, isPlaying }: GuestHeroProp
             width="280"
             height="280"
             decoding="async"
-            onError={(event) => {
-              const img = event.currentTarget;
-              if (img.src.endsWith(FALLBACK_ART)) return;
-              img.src = FALLBACK_ART;
-            }}
+            onError={showFallbackArt}
           />
         </button>
       </div>

@@ -2,9 +2,8 @@ import { TrackListModern } from './TrackListModern';
 import { SkeletonSearchResults } from './Skeletons';
 import { usePlayerStore } from '../store/playerStore';
 import { useAuthStore } from '../store/authStore';
+import { FALLBACK_ART, showFallbackArt } from '../utils/artwork';
 import type { Track } from '../types/types';
-
-const FALLBACK_ART = '/Favicon.png';
 
 /**
  * Search results, ranked by type rather than laid out as one flat grid.
@@ -72,7 +71,7 @@ export function SearchResults({
               alt=""
               loading="lazy"
               decoding="async"
-              onError={onArtError}
+              onError={showFallbackArt}
             />
             <span className="search-play-badge" aria-hidden="true">
               {isTopCurrent && isPlaying ? <PauseGlyph /> : <PlayGlyph />}
@@ -126,7 +125,7 @@ export function SearchResults({
                     alt=""
                     loading="lazy"
                     decoding="async"
-                    onError={onArtError}
+                    onError={showFallbackArt}
                   />
                 </span>
                 <span className="search-album-name truncate" title={track.album_name}>
@@ -148,7 +147,7 @@ export function SearchResults({
                 type="button"
                 key={playlist.id}
                 className="search-album"
-                onClick={() => usePlayerStore.getState().setCurrentView('playlists')}
+                onClick={() => usePlayerStore.getState().openPlaylist(playlist.id)}
                 aria-label={`Open playlist ${playlist.name}`}
               >
                 <span className="search-album-art">
@@ -156,7 +155,7 @@ export function SearchResults({
                     src={playlist.tracks[0]?.album_image || playlist.tracks[0]?.image || FALLBACK_ART}
                     alt=""
                     loading="lazy"
-                    onError={onArtError}
+                    onError={showFallbackArt}
                   />
                 </span>
                 <span className="search-album-name truncate" title={playlist.name}>
@@ -177,12 +176,6 @@ export function SearchResults({
 /** Asks the one search engine to run a query. */
 const requestSearch = (value: string) =>
   window.dispatchEvent(new CustomEvent('music-search', { detail: value }));
-
-const onArtError = (event: React.SyntheticEvent<HTMLImageElement>) => {
-  const img = event.currentTarget;
-  if (img.src.endsWith(FALLBACK_ART)) return;
-  img.src = FALLBACK_ART;
-};
 
 /**
  * Recoverable, and scoped to the results area: the field above keeps its text, so

@@ -1,9 +1,10 @@
-import type { Track } from '../types/types';
-import { STORAGE_KEYS } from '../config/constants';
+import type { QueueEntry, Track } from '../types/types';
+import { PLAYER_DEFAULTS, STORAGE_KEYS } from '../config/constants';
 import { usePlayerStore } from '../store/playerStore';
 import { MusicAPI } from './musicApi';
-import { NextTrackBuffer, type PreparedTrack } from './nextTrackBuffer';
-import { getNextQueuePosition } from '../utils/queuePlayback';
+import { TrackPrefetcher, type PreparedTrack } from './trackPrefetch';
+import { getUpcomingQueueIndexes } from '../utils/queuePlayback';
+import { FALLBACK_ART } from '../utils/artwork';
 
 let singletonAudio: HTMLAudioElement | null = null;
 let initialized = false;
@@ -15,9 +16,14 @@ let playAttempt = 0;
 let pendingPlay: number | null = null;
 type RecoveryStage = 'initial' | 'retry' | 'alternate' | 'refreshing' | 'refreshed' | 'failed';
 let recoveryStage: RecoveryStage = 'initial';
+// Seconds of uninterrupted playback after which a recovered stream counts as
+// healthy again, so a later error in the same song gets the full recovery path.
+const HEALTHY_PLAYBACK_SECONDS = 15;
+let healthyProgress = 0;
+let progressMark = -1;
 let lastReportedTime = -1;
 let restorePosition = 0;
-const nextTrackBuffer = new NextTrackBuffer();
+const trackPrefetcher = new TrackPrefetcher();
 let activePreparedTrack: PreparedTrack | null = null;
 let syncingPlayback = false;
 let interruptedPlayback: { track: Track; session: number } | null = null;
@@ -69,7 +75,7 @@ function updateMediaSession(track: Track | null) {
       title: track.name,
       artist: track.artist_name,
       album: track.album_name,
-      artwork: [{ src: track.image || track.album_image || '/Favicon.png' }],
+      artwork: [{ src: track.image || track.album_image || FALLBACK_ART }],
     }) : null;
   } catch {
     // Unsupported metadata or artwork must never prevent audio playback.
@@ -95,7 +101,14 @@ function requestPlay() {
   void audio.play().catch((error: unknown) => {
     if (attempt !== playAttempt || generation !== sourceGeneration) return;
     const name = error instanceof Error ? error.name : '';
-    if (name === 'AbortError' || audio.error) return; // Media errors have their own recovery path.
+    if (audio.error) return; // Media errors have their own recovery path.
+    if (name === 'AbortError') {
+      // Our own pauses and source changes invalidate the attempt first, so this is
+      // the OS pausing (headset unplug, call) while play() was pending; the pause
+      // event that carried it was ignored as the old source's.
+      if (audio.paused) usePlayerStore.setState({ isPlaying: false, isBuffering: false });
+      return;
+    }
     usePlayerStore.setState({
       isPlaying: false,
       isBuffering: false,
@@ -132,28 +145,30 @@ function syncPlayback() {
 function syncNextTrackPreparation() {
   if (syncingPlayback) return;
   const state = usePlayerStore.getState();
-  const next = getNextQueuePosition(state);
-  const track = state.currentTrack && next && next.index !== state.currentIndex ? state.queue[next.index] : null;
-  if (!track || !(track.audio || track.audiodownload)) { nextTrackBuffer.clear(); return; }
-  nextTrackBuffer.retain(track);
+  if (!state.currentTrack) { trackPrefetcher.clear(); return; }
+  const upcoming = getUpcomingQueueIndexes(state, PLAYER_DEFAULTS.PREFETCH_TRACK_COUNT)
+    // Replaying the loaded occurrence from a local file needs no second copy.
+    .filter(index => index !== state.currentIndex || !activePreparedTrack)
+    .map(index => state.queue[index]);
   const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
   const audio = getAudio();
-  if (!state.isPlaying || state.isBuffering || audio.paused || audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
-    || navigator.onLine === false || connection?.saveData || connection?.effectiveType?.includes('2g')) {
-    nextTrackBuffer.suspend();
-    return;
+  // Only gates starting a download: transient buffering or the pause at `ended`
+  // must not abort a file that is nearly on the device.
+  let canDownload = state.isPlaying && !state.isBuffering && !audio.paused
+    && audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA
+    && navigator.onLine !== false && !connection?.saveData && !connection?.effectiveType?.includes('2g');
+  if (canDownload && activePreparedTrack === null) {
+    // Give current playback priority: start once there is a 20-second cushion,
+    // or the rest of the current song is already buffered.
+    canDownload = false;
+    for (let index = 0; index < audio.buffered.length && !canDownload; index++) {
+      if (audio.buffered.start(index) > audio.currentTime) continue;
+      const end = audio.buffered.end(index);
+      canDownload = end - audio.currentTime >= 20
+        || (Number.isFinite(audio.duration) && end >= audio.duration - 0.25);
+    }
   }
-  // Give current playback priority. Download at most one next song after there
-  // is a 20-second cushion, or the rest of the current song is already buffered.
-  let enoughBuffered = activePreparedTrack !== null;
-  for (let index = 0; index < audio.buffered.length && !enoughBuffered; index++) {
-    if (audio.buffered.start(index) > audio.currentTime) continue;
-    const end = audio.buffered.end(index);
-    enoughBuffered = end - audio.currentTime >= 20
-      || (Number.isFinite(audio.duration) && end >= audio.duration - 0.25);
-  }
-  if (enoughBuffered) void nextTrackBuffer.prepare(track);
-  else nextTrackBuffer.suspend();
+  trackPrefetcher.sync({ current: state.currentTrack, upcoming, history: state.playbackHistory, canDownload });
 }
 
 function syncPlaybackState() {
@@ -164,7 +179,7 @@ function syncPlaybackState() {
   if (!state.currentTrack) {
     interruptedPlayback = null;
     automaticResumeUsed = false;
-    nextTrackBuffer.clear();
+    trackPrefetcher.clear();
     if (loadedTrack) {
       loadedTrack = null;
       loadedSrc = '';
@@ -185,7 +200,7 @@ function syncPlaybackState() {
   // Clearing Up Next invalidates recommendations, but must not reload the song.
   if (loadedTrack !== state.currentTrack || (loadedSession !== state.sessionId && !state.autoQueueSuppressed)
     || (state.isPlaying && recoveryStage === 'failed')) {
-    const prepared = nextTrackBuffer.take(state.currentTrack);
+    const prepared = trackPrefetcher.take(state.currentTrack);
     automaticResumeUsed = false;
     interruptedPlayback = null;
     loadedTrack = state.currentTrack;
@@ -226,10 +241,13 @@ function recoverStream() {
   const audio = getAudio();
   const track = usePlayerStore.getState().currentTrack;
   if (!track || !loadedSrc || !audio.error) return;
+  healthyProgress = 0;
+  progressMark = -1;
 
   const errorCode = audio.error.code;
   const retrySource = activePreparedTrack?.source || loadedSrc;
   const usedPreparedTrack = activePreparedTrack !== null;
+  if (usedPreparedTrack && (errorCode === 3 || errorCode === 4)) trackPrefetcher.discard(track);
   // Preserve a partially played song when reloading its stream.
   restorePosition = Math.max(restorePosition, audio.currentTime);
 
@@ -291,19 +309,58 @@ function recoverStream() {
   void MusicAPI.getTrackById(track.id, controller.signal, { refresh: true }).then(fresh => {
     if (generation !== sourceGeneration || usePlayerStore.getState().currentTrack !== track) return;
     const refreshed = fresh?.audio || fresh?.audiodownload;
-    if (refreshed) {
+    if (fresh && refreshed) {
       // A valid provider URL need not change after a temporary failure. Mark
       // this final attempt separately from the pending request to bound retries.
       recoveryStage = 'refreshed';
       applySource(refreshed);
+      rememberRefreshedStream(track, fresh);
     } else fail();
   }).catch(() => {
     if (generation === sourceGeneration && usePlayerStore.getState().currentTrack === track) fail();
   }).finally(() => clearTimeout(timer));
 }
 
+/**
+ * Keeps a refreshed stream URL on the playing queue entry, so Previous or a
+ * repeat pass comes back to it instead of the expired one. `currentTrack` is
+ * left as it is: a new object there would reload the song that is playing.
+ */
+function rememberRefreshedStream(track: Track, fresh: Track) {
+  const { queue, currentIndex } = usePlayerStore.getState();
+  const entry = queue[currentIndex];
+  if (!entry || String(entry.id) !== String(track.id)) return;
+  const updated: QueueEntry = { ...entry, audio: fresh.audio || '', audiodownload: fresh.audiodownload || '' };
+  usePlayerStore.setState({ queue: queue.map((item, index) => (index === currentIndex ? updated : item)) });
+}
+
+function replayFromStart() {
+  const track = usePlayerStore.getState().currentTrack;
+  // A streamed song may no longer be buffered from its start; its local copy is.
+  const prepared = track && !activePreparedTrack ? trackPrefetcher.take(track) : null;
+  if (prepared) {
+    recoveryStage = 'initial';
+    restorePosition = 0;
+    applySource(prepared.url, prepared);
+    return;
+  }
+  getAudio().currentTime = 0;
+  requestPlay();
+}
+
 function attachAudioListeners(audio: HTMLAudioElement) {
   audio.addEventListener('timeupdate', () => {
+    if (recoveryStage === 'retry' || recoveryStage === 'alternate' || recoveryStage === 'refreshed') {
+      // Small forward steps only: a seek or a restored position is not playback.
+      const step = audio.currentTime - progressMark;
+      if (progressMark >= 0 && step > 0 && step < 2 && !audio.paused) healthyProgress += step;
+      progressMark = audio.currentTime;
+      if (healthyProgress >= HEALTHY_PLAYBACK_SECONDS) {
+        recoveryStage = 'initial';
+        healthyProgress = 0;
+        progressMark = -1;
+      }
+    }
     if (Math.abs(audio.currentTime - lastReportedTime) < 0.15 && lastReportedTime >= 0) return;
     lastReportedTime = audio.currentTime;
     usePlayerStore.getState().setCurrentTime(audio.currentTime);
@@ -346,16 +403,14 @@ function attachAudioListeners(audio: HTMLAudioElement) {
     const before = usePlayerStore.getState();
     if (!before.isPlaying) return;
     if (before.repeatMode === 'one') {
-      audio.currentTime = 0;
-      requestPlay();
+      replayFromStart();
       return;
     }
     before.nextTrack(); // The synchronous subscription loads and plays the next source here.
     const after = usePlayerStore.getState();
     if (after.isPlaying && after.currentTrack === before.currentTrack) {
-      // Repeat-all with one queue entry leaves the selection unchanged.
-      audio.currentTime = 0;
-      requestPlay();
+      // Repeat-all with one queue entry, or none left, leaves the selection unchanged.
+      replayFromStart();
     }
   });
   audio.addEventListener('error', recoverStream);
@@ -398,10 +453,15 @@ export function initializePlayer() {
   if (!usePlayerStore.getState().currentTrack) {
     try {
       const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEYS.PLAYBACK) || 'null');
-      if (saved?.track?.id) usePlayerStore.setState({
-        currentTrack: saved.track, currentTime: Number(saved.position) || 0,
-        duration: saved.track.duration || 0, isPlaying: false,
-      });
+      if (saved?.track?.id) {
+        // A queue of one, so the song can end and the suggestion engine can extend it.
+        // The id cannot collide with the store's `q<n>` counter.
+        const entry: QueueEntry = { ...saved.track, queueEntryId: 'restored' };
+        usePlayerStore.setState({
+          currentTrack: entry, queue: [entry], currentIndex: 0, currentTime: Number(saved.position) || 0,
+          duration: entry.duration || 0, isPlaying: false,
+        });
+      }
     } catch {
       // No resumable session.
     }
@@ -420,10 +480,10 @@ export function initializePlayer() {
   };
   document.addEventListener('visibilitychange', () => {
     persistPlayback();
-    if (document.visibilityState === 'visible') resumeIfRequested();
+    if (document.visibilityState === 'visible') { trackPrefetcher.retryFailed(); resumeIfRequested(); }
   });
   window.addEventListener('pageshow', resumeIfRequested);
-  window.addEventListener('online', () => { nextTrackBuffer.retryFailed(); resumeIfRequested(); });
+  window.addEventListener('online', () => { trackPrefetcher.retryFailed(); resumeIfRequested(); });
   window.addEventListener('pagehide', persistPlayback);
 }
 

@@ -55,34 +55,6 @@ export function SkeletonTrackList({ count = 8 }: { count?: number }) {
   );
 }
 
-export function SkeletonPlaylistCard() {
-  return (
-    <div className="skeleton-playlist-card">
-      <div className="skeleton-playlist-header">
-        <div style={{ flex: 1 }}>
-          <Skeleton width="60%" height="1.25rem" style={{ marginBottom: '0.4rem' }} />
-          <Skeleton width="35%" height="0.85rem" />
-        </div>
-        <Skeleton width="32px" height="32px" borderRadius="50%" />
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
-        <SkeletonTrackRow />
-        <SkeletonTrackRow />
-        <SkeletonTrackRow />
-      </div>
-    </div>
-  );
-}
-
-export function SkeletonPlaylistsGrid({ count = 4 }: { count?: number }) {
-  return (
-    <div className="playlists-grid">
-      {Array.from({ length: count }).map((_, index) => (
-        <SkeletonPlaylistCard key={index} />
-      ))}
-    </div>
-  );
-}
 export function SkeletonGuestCard() {
   return (
     <div className="music-card" style={{ cursor: 'default' }}>

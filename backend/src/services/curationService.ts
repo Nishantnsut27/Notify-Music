@@ -72,6 +72,31 @@ function toStoredTrack(song: Song): ISongSubDoc {
   };
 }
 
+/**
+ * Sibling sections are deduplicated at generation time, but a sibling that refreshes while another
+ * is mid-generation compares against stale tracks. Re-checking here keeps each song in one row.
+ */
+function dedupeAcrossOverlapGroups(records: CuratedSectionRecord[]): CuratedSectionRecord[] {
+  const order = new Map(CURATED_SECTIONS.map((definition, index) => [definition.id, index]));
+  const seenByGroup = new Map<string, Set<string>>();
+
+  return [...records]
+    .sort((a, b) => (order.get(a.sectionId) ?? 0) - (order.get(b.sectionId) ?? 0))
+    .map(record => {
+      const group = getCuratedSectionDefinition(record.sectionId).overlapGroup;
+      const seen = seenByGroup.get(group) ?? new Set<string>();
+      seenByGroup.set(group, seen);
+
+      const tracks = record.tracks.filter(track => {
+        const keys = [`id:${track.id}`, `ta:${buildCandidateKey(track.name || '', track.artist_name || '')}`];
+        if (keys.some(key => seen.has(key))) return false;
+        keys.forEach(key => seen.add(key));
+        return true;
+      });
+      return tracks.length === record.tracks.length ? record : { ...record, tracks };
+    });
+}
+
 function toPayload(record: CuratedSectionRecord): CuratedSectionPayload {
   return {
     sectionId: record.sectionId,
@@ -96,7 +121,9 @@ export class CurationService {
       SECTIONS_CACHE_KEY,
       async () => {
         const records = await curatedSectionRepository.findAll();
-        return records.filter(record => record.tracks.length > 0).map(toPayload);
+        return dedupeAcrossOverlapGroups(records)
+          .filter(record => record.tracks.length > 0)
+          .map(toPayload);
       },
       CURATION_ENGINE_CONFIG.sectionCacheTtlMs
     );
@@ -108,7 +135,11 @@ export class CurationService {
     return toPayload(record);
   }
 
-  async refreshSection(sectionId: CuratedSectionId): Promise<SectionRefreshOutcome> {
+  /**
+   * `notBefore` lets a scheduled run skip work another instance (or an earlier retry) already did:
+   * if the stored section was generated at or after it, the refresh is a no-op.
+   */
+  async refreshSection(sectionId: CuratedSectionId, options: { notBefore?: Date } = {}): Promise<SectionRefreshOutcome> {
     const definition = getCuratedSectionDefinition(sectionId);
     const startedAt = Date.now();
 
@@ -156,6 +187,14 @@ export class CurationService {
     refreshLockRenewal.unref?.();
 
     try {
+      if (options.notBefore) {
+        const existing = await curatedSectionRepository.findBySectionId(sectionId);
+        if (existing && existing.tracks.length > 0 && new Date(existing.generatedAt) >= options.notBefore) {
+          logger.info(SCOPE, 'Section generation skipped: already refreshed for this slot', { sectionId });
+          return { sectionId, status: 'skipped', reason: 'already_fresh' };
+        }
+      }
+
       const completion = await createJsonCompletion({
         systemPrompt: CURATION_SYSTEM_PROMPT,
         userPrompt: buildCurationUserPrompt(sectionId),
@@ -278,12 +317,15 @@ export class CurationService {
         try {
           const query = `${candidate.title} ${candidate.artist}`.trim();
           const { songs } = await this.musicService.search(query, CURATION_ENGINE_CONFIG.providerSearchLimit);
+          // Jamendo only appears when JioSaavn failed; its catalogue is indie tracks that merely share a title.
+          const catalogueSongs = songs.filter(song => song.provider === 'jiosaavn');
 
           const match = findBestSongMatch(
             candidate.title,
             candidate.artist,
-            songs,
-            CURATION_ENGINE_CONFIG.matchConfidenceThreshold
+            catalogueSongs,
+            CURATION_ENGINE_CONFIG.matchConfidenceThreshold,
+            CURATION_ENGINE_CONFIG.minArtistSimilarity
           );
 
           if (!match) {
@@ -291,7 +333,7 @@ export class CurationService {
             logger.debug(SCOPE, 'Candidate could not be resolved to a provider track', {
               sectionId,
               candidateIndex: index,
-              providerResults: songs.length
+              providerResults: catalogueSongs.length
             });
             continue;
           }
@@ -371,16 +413,6 @@ export class CurationService {
     });
 
     return { tracks, unresolvedCount, duplicateTracksRemoved };
-  }
-
-  async refreshAllSections(): Promise<SectionRefreshOutcome[]> {
-    const outcomes: SectionRefreshOutcome[] = [];
-
-    for (const definition of CURATED_SECTIONS) {
-      outcomes.push(await this.refreshSection(definition.id));
-    }
-
-    return outcomes;
   }
 
   invalidateReadCache(): void {

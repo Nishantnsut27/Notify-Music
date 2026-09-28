@@ -83,6 +83,22 @@ function extractGroqCode(error: unknown): string | undefined {
   return undefined;
 }
 
+/** Honors Retry-After (seconds or HTTP date) so a key that hit its daily quota isn't retried every few minutes. */
+function rateLimitCooldownMs(error: unknown): number {
+  const fallback = CURATION_ENGINE_CONFIG.rateLimitCooldownMs;
+  if (!axios.isAxiosError(error)) return fallback;
+
+  const header: unknown = error.response?.headers?.['retry-after'];
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (raw === undefined || raw === null || raw === '') return fallback;
+
+  const seconds = Number(raw);
+  const waitMs = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(String(raw)) - Date.now();
+  if (!Number.isFinite(waitMs) || waitMs <= 0) return fallback;
+
+  return Math.min(Math.max(waitMs, 1000), CURATION_ENGINE_CONFIG.maxRateLimitCooldownMs);
+}
+
 function classifyFailure(error: unknown): GroqAttemptFailure {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
@@ -92,7 +108,7 @@ function classifyFailure(error: unknown): GroqAttemptFailure {
         kind: 'rate_limit',
         status,
         rotate: true,
-        cooldownMs: CURATION_ENGINE_CONFIG.rateLimitCooldownMs,
+        cooldownMs: rateLimitCooldownMs(error),
         message: 'Rate limit or quota exceeded'
       };
     }

@@ -97,20 +97,3 @@ export function EmptyPlaylists({ onCreate }: { onCreate?: () => void }) {
     />
   );
 }
-
-export function EmptyRecentlyPlayed({ onBrowse }: { onBrowse?: () => void }) {
-  return (
-    <EmptyState
-      icon={
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <circle cx="12" cy="12" r="10" />
-          <polyline points="12 6 12 12 16 14" />
-        </svg>
-      }
-      title="No recently played tracks"
-      description="Your recently played tracks will appear here as you listen to music."
-      actionText={onBrowse ? 'Start Listening' : undefined}
-      onAction={onBrowse}
-    />
-  );
-}

@@ -14,21 +14,28 @@ export function RelatedMusic() {
       return;
     }
 
+    /* Skipping through tracks overlaps these lookups; only the one for the track
+       now playing may land, or the previous song's rows sit under this title. */
+    let cancelled = false;
     const loadRelated = async () => {
       setIsLoading(true);
       setError(null);
       try {
         const data = await MusicAPI.getRelatedMusic(currentTrack);
-        setRelatedMusic(data);
+        if (!cancelled) setRelatedMusic(data);
       } catch (err) {
+        if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Failed to load related music');
         setRelatedMusic(null);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     loadRelated();
+    return () => {
+      cancelled = true;
+    };
   }, [currentTrack, setRelatedMusic]);
 
   if (!currentTrack || (!relatedMusic && !isLoading)) return null;

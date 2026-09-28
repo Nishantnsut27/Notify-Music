@@ -37,9 +37,11 @@ export const PlaylistMenu: React.FC<PlaylistMenuProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+      const target = e.target as Element | null;
+      if (!menuRef.current || menuRef.current.contains(target)) return;
+      // The trigger's own click toggles the menu; closing here first would let that click reopen it.
+      if (target?.closest?.('[data-menu-trigger]')) return;
+      onClose();
     };
 
     if (isOpen && !isMobile) {

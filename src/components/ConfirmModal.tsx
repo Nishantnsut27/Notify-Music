@@ -32,6 +32,14 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  /* Callers pass inline handlers, so the key listener reads the latest one
+     through a ref instead of re-subscribing (and re-restoring focus) on every
+     parent render. */
+  const onCancelRef = useRef(onCancel);
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -43,24 +51,52 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     };
   }, [isOpen]);
 
+  /* No global Enter-to-confirm: Enter activates whichever button has focus, so
+     it cannot confirm a destructive action while the listener is on Cancel. */
   useEffect(() => {
+    if (!isOpen) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return;
       if (e.key === 'Escape') {
-        onCancel();
-      } else if (e.key === 'Enter' && !showInput) {
-        onConfirm();
+        e.preventDefault();
+        onCancelRef.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const container = modalRef.current;
+      if (!container) return;
+      const focusable = Array.from(
+        container.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'),
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      const outside = !container.contains(active);
+      if (e.shiftKey && (active === first || outside)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || outside)) {
+        e.preventDefault();
+        first.focus();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onCancel, onConfirm, showInput]);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && showInput) {
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
+    if (!isOpen) return;
+    const timer = window.setTimeout(() => {
+      (showInput ? inputRef.current : confirmRef.current)?.focus();
+    }, 50);
+    return () => window.clearTimeout(timer);
   }, [isOpen, showInput]);
 
   if (!isOpen) return null;
@@ -123,6 +159,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             {title}
           </h3>
           <button
+            type="button"
             className="confirm-modal-close"
             onClick={onCancel}
             aria-label="Close modal"
@@ -147,7 +184,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  onConfirm();
+                  if (inputValue.trim()) onConfirm();
                 }
               }}
             />
@@ -159,6 +196,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             {cancelText}
           </button>
           <button
+            ref={confirmRef}
             className={`btn ${isDanger ? 'confirm-btn-danger' : 'btn-primary'}`}
             onClick={onConfirm}
             disabled={showInput && !inputValue.trim()}

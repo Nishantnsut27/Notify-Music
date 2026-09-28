@@ -1,6 +1,7 @@
-import { fetchJson, API_BASE_URL } from './apiClient';
+import { fetchJson } from './apiClient';
+import { BACKEND_URL } from '../config/constants';
 
-const AUTH_BASE_URL = `${API_BASE_URL}/api/auth`;
+const AUTH_BASE_URL = `${BACKEND_URL}/api/auth`;
 
 export interface UserProfile {
   id: string;

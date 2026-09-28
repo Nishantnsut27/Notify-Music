@@ -18,27 +18,22 @@ const WEIGHTS = {
   trending: 5,
 } as const;
 
-function containsArtist(base: string, other: string): boolean {
-  const a = normalizeStringForSearch(base);
-  const b = normalizeStringForSearch(other);
-  if (!a || !b) return false;
-  if (a === b) return true;
-  const baseArtists = a.split(',').map((s: string) => s.trim()).filter(Boolean);
-  const otherArtists = b.split(',').map((s: string) => s.trim()).filter(Boolean);
-  return baseArtists.some((x: string) => otherArtists.includes(x));
-}
+// Split before normalizing: normalization strips the commas that separate artists.
+const splitArtists = (value: string): string[] =>
+  value.split(',').map((name) => normalizeStringForSearch(name)).filter(Boolean);
 
-function sharesToken(base: string, other: string): boolean {
-  const a = normalizeStringForSearch(base);
-  const b = normalizeStringForSearch(other);
-  if (!a || !b) return false;
-  if (a === b) return true;
-  return a.includes(b) || b.includes(a);
+function containsArtist(base: string, other: string): boolean {
+  const baseArtists = splitArtists(base);
+  const otherArtists = splitArtists(other);
+  return baseArtists.some((name) => otherArtists.includes(name));
 }
 
 function sameAlbum(a: Song, b: Song): boolean {
-  if (a.album_id && b.album_id && String(a.album_id) === String(b.album_id)) return true;
-  if (a.album_name && b.album_name) return sharesToken(a.album_name, b.album_name);
+  if (a.album_id && b.album_id) return String(a.album_id) === String(b.album_id);
+  if (a.album_name && b.album_name) {
+    const left = normalizeStringForSearch(a.album_name);
+    return Boolean(left) && left === normalizeStringForSearch(b.album_name);
+  }
   return false;
 }
 
@@ -104,5 +99,3 @@ export function scoreCandidate(source: Song, candidate: Song, sourceProviderNati
 
   return { song: candidate, score, reason };
 }
-
-export const RECOMMENDATION_WEIGHTS = WEIGHTS;

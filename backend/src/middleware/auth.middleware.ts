@@ -36,7 +36,7 @@ export const authenticateUser = async (
     const decoded = verifyAuthToken(token);
 
     // 4. Look up user in MongoDB Atlas
-    const user = await User.findById(decoded.userId);
+    const user = await User.findById(decoded.userId).select(decoded.sid ? '+refreshSessions' : '');
 
     if (!user) {
       res.status(401).json({
@@ -44,6 +44,21 @@ export const authenticateUser = async (
         error: 'User associated with this token no longer exists.',
       });
       return;
+    }
+
+    // Tokens issued before sessions carried ids have no `sid` and simply expire on their own.
+    if (decoded.sid) {
+      const now = Date.now();
+      const sessionAlive = (user.refreshSessions || []).some(
+        (session) => session.sessionId === decoded.sid && session.expiresAt.getTime() > now
+      );
+      if (!sessionAlive) {
+        res.status(401).json({
+          success: false,
+          error: 'This session has ended. Please log in again.',
+        });
+        return;
+      }
     }
 
     if (user.accountStatus !== 'active') {
@@ -63,34 +78,4 @@ export const authenticateUser = async (
       error: 'Invalid or expired authentication session. Please log in again.',
     });
   }
-};
-
-export const attachUserIfPresent = async (
-  req: AuthenticatedRequest,
-  _res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    let token: string | undefined;
-
-    if (req.cookies && req.cookies.auth_token) {
-      token = req.cookies.auth_token;
-    }
-
-    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-      token = req.headers.authorization.split(' ')[1];
-    }
-
-    if (token) {
-      const decoded = verifyAuthToken(token);
-      const user = await User.findById(decoded.userId);
-      if (user) {
-        req.user = user;
-      }
-    }
-  } catch {
-    req.user = undefined;
-  }
-
-  next();
 };

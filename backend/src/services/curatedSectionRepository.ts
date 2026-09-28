@@ -3,7 +3,7 @@ import { CurationRefreshLockModel } from '../models/curationRefreshLock.model.js
 import { ISongSubDoc } from '../models/playlist.model.js';
 import { CURATED_SECTIONS, type CuratedSectionId } from '../config/curationConfig.js';
 import { buildCandidateKey } from '../utils/curationCandidates.js';
-import { logger, serializeError } from '../utils/logger.js';
+import { logger } from '../utils/logger.js';
 
 const SCOPE = 'CuratedSectionRepository';
 
@@ -114,28 +114,21 @@ export class CuratedSectionRepository {
     return toRecord(doc);
   }
 
-  async findStaleOrMissingSectionIds(staleAfterMs: number): Promise<CuratedSectionId[]> {
-    try {
-      const docs = await CuratedSectionModel.find({}, { sectionId: 1, generatedAt: 1, tracks: 1 })
-        .lean<Array<Pick<ICuratedSectionDoc, 'sectionId' | 'generatedAt' | 'tracks'>>>()
-        .exec();
+  /**
+   * Epoch ms each section was last generated; 0 for missing or empty sections.
+   * Throws on database errors so callers retry instead of treating everything as fresh.
+   */
+  async getGenerationTimes(): Promise<Map<CuratedSectionId, number>> {
+    const docs = await CuratedSectionModel.find({}, { sectionId: 1, generatedAt: 1, tracks: 1 })
+      .lean<Array<Pick<ICuratedSectionDoc, 'sectionId' | 'generatedAt' | 'tracks'>>>()
+      .exec();
 
-      const cutoff = Date.now() - staleAfterMs;
-      const healthy = new Set(
-        docs
-          .filter(doc => {
-            const hasTracks = Array.isArray(doc.tracks) && doc.tracks.length > 0;
-            const generatedAt = doc.generatedAt ? new Date(doc.generatedAt).getTime() : 0;
-            return hasTracks && generatedAt >= cutoff;
-          })
-          .map(doc => doc.sectionId)
-      );
-
-      return CURATED_SECTIONS.map(definition => definition.id).filter(sectionId => !healthy.has(sectionId));
-    } catch (error) {
-      logger.error(SCOPE, 'Failed to inspect curated section freshness', { error: serializeError(error) });
-      return [];
+    const times = new Map<CuratedSectionId, number>(CURATED_SECTIONS.map(definition => [definition.id, 0]));
+    for (const doc of docs) {
+      if (!times.has(doc.sectionId) || !Array.isArray(doc.tracks) || doc.tracks.length === 0) continue;
+      times.set(doc.sectionId, doc.generatedAt ? new Date(doc.generatedAt).getTime() : 0);
     }
+    return times;
   }
 
   async getTrackKeysForOverlapGroup(

@@ -1,6 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 
+// bcrypt silently ignores bytes past 72, so longer passwords would only be partially checked.
+const newPasswordField = z
+  .string()
+  .min(6, 'Password must be at least 6 characters.')
+  .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, 'Password is too long (max 72 bytes).');
+
 const registerSchema = z.object({
   fullName: z
     .string()
@@ -12,10 +18,7 @@ const registerSchema = z.object({
     .trim()
     .email('Please provide a valid email address.')
     .transform((val) => val.toLowerCase()),
-  password: z
-    .string()
-    .min(6, 'Password must be at least 6 characters.')
-    .max(100, 'Password is too long.'),
+  password: newPasswordField,
 });
 
 const loginSchema = z.object({
@@ -27,6 +30,7 @@ const loginSchema = z.object({
   password: z
     .string()
     .min(1, 'Password is required.'),
+  rememberMe: z.boolean().optional(),
 });
 
 const emailOnlySchema = z.object({
@@ -55,10 +59,7 @@ const resetPasswordSchema = z.object({
     .trim()
     .email('Please provide a valid email address.')
     .transform((val) => val.toLowerCase()),
-  newPassword: z
-    .string()
-    .min(6, 'Password must be at least 6 characters.')
-    .max(100, 'Password is too long.'),
+  newPassword: newPasswordField,
   resetToken: z
     .string()
     .trim()
@@ -69,10 +70,7 @@ const changePasswordSchema = z.object({
   currentPassword: z
     .string()
     .min(1, 'Current password is required.'),
-  newPassword: z
-    .string()
-    .min(6, 'Password must be at least 6 characters.')
-    .max(100, 'Password is too long.'),
+  newPassword: newPasswordField,
 });
 
 const makeValidator = (schema: z.ZodTypeAny, fallbackMessage: string) => {

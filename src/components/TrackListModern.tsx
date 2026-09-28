@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { QueueContext, Track } from '../types/types';
 import { usePlayerStore } from '../store/playerStore';
 import { useToastStore } from '../store/toastStore';
@@ -40,6 +40,22 @@ interface TrackListProps {
    * handle would promise something the surface cannot keep.
    */
   onReorder?: (fromIndex: number, toIndex: number) => void;
+  /** Marks this list as search results, so an empty one offers to clear the search. */
+  isSearchResults?: boolean;
+}
+
+/**
+ * Row keys that follow the track rather than its position, so a reorder moves
+ * rows instead of remounting them. Only a repeated song gets a suffix.
+ */
+function rowKeys(tracks: Track[]): string[] {
+  const seen = new Map<string, number>();
+  return tracks.map((track) => {
+    const id = String(track.id);
+    const count = (seen.get(id) ?? 0) + 1;
+    seen.set(id, count);
+    return count === 1 ? id : `${id}:${count}`;
+  });
 }
 
 export function TrackListModern({
@@ -53,7 +69,9 @@ export function TrackListModern({
   queueContext,
   variant = 'auto',
   onReorder,
+  isSearchResults = false,
 }: TrackListProps) {
+  const rowsRef = useRef<HTMLDivElement>(null);
   const [hoveredTrack, setHoveredTrack] = useState<string | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [removingFromPlaylist, setRemovingFromPlaylist] = useState<string | null>(null);
@@ -172,11 +190,23 @@ export function TrackListModern({
   const asRows = variant === 'list' || isAuthenticated;
 
   const moveTrack = (fromIndex: number, toIndex: number) => {
-    if (!onReorder) return;
-    if (toIndex < 0 || toIndex >= tracks.length || fromIndex === toIndex) return;
+    if (!onReorder) return false;
+    if (toIndex < 0 || toIndex >= tracks.length || fromIndex === toIndex) return false;
     onReorder(fromIndex, toIndex);
     setReorderAnnouncement(`${tracks[fromIndex].name} moved to position ${toIndex + 1} of ${tracks.length}`);
+    return true;
   };
+
+  /* Moving a row down re-inserts its element, which drops focus to the page,
+     where the next arrow press would change the volume instead. */
+  const moveTrackFromKeyboard = (fromIndex: number, toIndex: number) => {
+    if (!moveTrack(fromIndex, toIndex)) return;
+    requestAnimationFrame(() => {
+      rowsRef.current?.querySelectorAll<HTMLElement>('.track-reorder-handle')[toIndex]?.focus();
+    });
+  };
+
+  const keys = rowKeys(tracks);
 
   if (isLoading) {
     return (
@@ -202,11 +232,10 @@ export function TrackListModern({
   }
 
   if (tracks.length === 0) {
-    const isSearching = usePlayerStore.getState().query.length > 0;
     return (
       <div className="modern-track-list">
         {title && <h2 className="track-list-title-modern">{title}</h2>}
-        {isSearching ? (
+        {isSearchResults ? (
           <EmptySearchResults
             onClear={() => {
               const store = usePlayerStore.getState();
@@ -227,7 +256,7 @@ export function TrackListModern({
             onAction={() => {
               const store = usePlayerStore.getState();
               store.clearResults();
-              store.setCurrentView('search');
+              store.setCurrentView('trending');
             }}
           />
         )}
@@ -243,7 +272,7 @@ export function TrackListModern({
         <div className="music-card-grid">
           {tracks.map((track, index) => (
             <MusicCard
-              key={`${track.id}-${index}`}
+              key={keys[index]}
               track={track}
               onPlay={handlePlayTrack}
               isCurrent={isCurrentTrack(track)}
@@ -262,12 +291,13 @@ export function TrackListModern({
         </div>
       ) : (
         <div
+          ref={rowsRef}
           className={`track-list-container-modern ${hoveredTrack ? 'has-hovered-track' : ''}`}
           onMouseLeave={() => { setHoveredTrack(null); setHoveredIndex(null); }}
         >
           {tracks.map((track, index) => (
             <TrackItemModern
-              key={`${track.id}-${index}`}
+              key={keys[index]}
               track={track}
               index={index}
               isCurrent={isCurrentTrack(track)}
@@ -292,7 +322,7 @@ export function TrackListModern({
                     total: tracks.length,
                     isDragging: draggingIndex === index,
                     isDropTarget: dropIndex === index && draggingIndex !== index,
-                    onMove: moveTrack,
+                    onMove: moveTrackFromKeyboard,
                     onDragStart: setDraggingIndex,
                     onDragEnd: () => { setDraggingIndex(null); setDropIndex(null); },
                     onDragOver: setDropIndex,

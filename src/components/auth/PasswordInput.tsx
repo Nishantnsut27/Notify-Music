@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LockIcon, EyeIcon, EyeOffIcon } from './AuthIcons';
+import { LockIcon, EyeIcon, EyeOffIcon, AlertCircleIcon } from './AuthIcons';
 
 interface PasswordInputProps {
   id: string;
@@ -7,7 +7,9 @@ interface PasswordInputProps {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
+  label?: string;
   placeholder?: string;
+  hint?: string;
   error?: string;
   isInvalid?: boolean;
   disabled?: boolean;
@@ -21,7 +23,9 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
   value,
   onChange,
   onBlur,
-  placeholder = 'Password',
+  label = 'Password',
+  placeholder,
+  hint,
   error,
   isInvalid,
   disabled = false,
@@ -29,11 +33,14 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
   required = false,
 }) => {
   const [showPassword, setShowPassword] = useState(false);
+  const invalid = !!(isInvalid || error);
+  const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
 
   return (
-    <div className="auth-glass-field">
-      <div className="auth-input-wrapper">
-        <span className="auth-input-icon-left">
+    <div className="auth-field">
+      <label htmlFor={id} className="auth-label">{label}</label>
+      <div className="auth-input-wrap">
+        <span className="auth-input-icon">
           <LockIcon size={18} />
         </span>
 
@@ -41,35 +48,40 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
           id={id}
           name={name}
           type={showPassword ? 'text' : 'password'}
-          className={`auth-glass-input ${isInvalid || error ? 'is-invalid' : ''}`}
+          className={`auth-input has-icon has-toggle${invalid ? ' is-invalid' : ''}`}
           value={value}
           onChange={onChange}
           onBlur={onBlur}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete={autoComplete}
+          autoCapitalize="none"
+          spellCheck={false}
           required={required}
-          aria-invalid={!!(isInvalid || error)}
-          aria-describedby={error ? `${id}-error` : undefined}
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
         />
 
         <button
           type="button"
-          className="auth-input-toggle-right"
+          className="auth-input-toggle"
           onClick={() => setShowPassword((prev) => !prev)}
           disabled={disabled}
           aria-label={showPassword ? 'Hide password' : 'Show password'}
-          tabIndex={0}
+          aria-controls={id}
         >
           {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
         </button>
       </div>
 
-      {error && (
-        <span id={`${id}-error`} className="auth-field-error" role="alert">
-          {error}
-        </span>
-      )}
+      {error ? (
+        <p id={`${id}-error`} className="auth-field-error" role="alert">
+          <AlertCircleIcon size={14} />
+          <span>{error}</span>
+        </p>
+      ) : hint ? (
+        <p id={`${id}-hint`} className="auth-field-hint">{hint}</p>
+      ) : null}
     </div>
   );
 };
