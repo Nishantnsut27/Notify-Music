@@ -324,37 +324,10 @@
   position: relative;
 }
 
-/* The old circular glass chip; flattened to a plain quiet icon button. */
-.app-header .github-link {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: transparent;
-  border: 1px solid var(--line-subtle);
-  color: var(--text-2);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  transition: background-color 0.18s var(--smooth), color 0.18s var(--smooth),
-    border-color 0.18s var(--smooth);
-}
-
-.app-header .github-link:hover {
-  background: var(--surface-hover);
-  border-color: var(--line);
-  color: var(--text-1);
-  transform: none;
-  box-shadow: none;
-}
-
 @media (max-width: 768px) {
   .app-header {
     background: var(--surface-0) !important;
     padding: 0.5rem 1rem;
-  }
-
-  .app-header .github-link {
-    width: 34px;
-    height: 34px;
   }
 }
 
@@ -1596,12 +1569,7 @@
  * ================================================================== *
  * The cover and the caption both open the collection; a small button in the
  * cover's corner plays it. Play is deliberately not the cover's own action —
- * tapping a cover to look inside an album should not start track 1 first.
- *
- * One class, not `.album-card` plus `.playlist-card`: the authenticated
- * Playlists view in layout.css already owns `.playlist-card`, and because
- * shell.css cascades last a second definition here silently stripped that
- * view's background, border and padding. */
+ * tapping a cover to look inside an album should not start track 1 first. */
 
 .browse-card-grid {
   display: grid;

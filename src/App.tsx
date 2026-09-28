@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { SearchBar } from './components/SearchBar';
 import { PlayerControls } from './components/PlayerControls';
 import { QueuePanel } from './components/QueuePanel';
@@ -35,6 +35,7 @@ import { AuthModal, type AuthMode } from './components/auth/AuthModal';
 import { useAuthStore } from './store/authStore';
 import { InstallButton } from './pwa/InstallButton';
 import { OfflinePage } from './pwa/OfflinePage';
+import { EmptyState } from './components/EmptyState';
 
 import './styles/variables.css';
 import './styles/foundation.css';
@@ -75,12 +76,50 @@ const PROTECTED_VIEWS: AppView[] = ['favorites', 'playlists', 'playlist', 'histo
  */
 const HISTORY_ALIASES = ['/recent', '/recently-played'];
 
+const ENTITY_ROUTE = /^\/(album|genre|playlist)\/([^/]+)$/i;
+
+/** Whether an address names one of the signed-in-only views in PROTECTED_VIEWS. */
+function isSignedInPath(rawPath: string): boolean {
+  const entityMatch = rawPath.match(ENTITY_ROUTE);
+  if (entityMatch) return entityMatch[1].toLowerCase() === 'playlist';
+  const path = rawPath.toLowerCase();
+  return (
+    path.includes('/favorites') ||
+    path.includes('/playlists') ||
+    path.includes('/history') ||
+    HISTORY_ALIASES.includes(path)
+  );
+}
+
+/**
+ * The toast for a failed Google sign-in. `reason` arrives in the address bar,
+ * so it only ever selects one of these fixed messages and is never shown as-is.
+ * A listener who cancelled knows they did; the sign-in modal opening is enough.
+ */
+function oauthErrorMessage(reason: string | undefined): string | null {
+  switch (reason) {
+    case 'cancelled':
+      return null;
+    case 'state':
+    case 'google':
+      return 'Unable to sign in with Google. Please try again.';
+    case 'failed':
+    default:
+      return 'Google sign-in failed. Please try again.';
+  }
+}
+
 function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<AuthMode>('login');
   const [legalPage, setLegalPage] = useState<'terms' | 'privacy' | null>(null);
+  const [isAwaitingAuth, setIsAwaitingAuth] = useState(() => {
+    const auth = useAuthStore.getState();
+    return !auth.isAuthenticated && (!auth.isInitialized || auth.isSessionRetryPending)
+      && isSignedInPath(window.location.pathname);
+  });
 
   useEffect(() => {
     const goOnline = () => setIsOffline(false);
@@ -93,12 +132,15 @@ function App() {
     };
   }, []);
 
-  const { isAuthenticated, checkAuth } = useAuthStore();
+  const { isAuthenticated, isInitialized: isAuthInitialized, isSessionRetryPending, checkAuth } = useAuthStore();
   const { addToast } = useToastStore();
 
   useEffect(() => {
+    // A successful Google return verifies the session itself in completeOAuth.
+    // Every other URL, a failed return included, still has to learn whether an
+    // existing session is signed in.
     const params = new URLSearchParams(window.location.search);
-    if (params.has('auth') || params.has('code') || params.has('error')) return;
+    if (params.get('auth') === 'success') return;
     checkAuth();
   }, [checkAuth]);
 
@@ -110,14 +152,8 @@ function App() {
       if (result.status === 'success') {
         addToast({ message: 'Signed in with Google.', type: 'success' });
       } else if (result.status === 'error') {
-        const reason = result.reason;
-        if (reason && reason !== 'cancelled') {
-          const message =
-            reason === 'google' || reason === 'state'
-              ? 'Unable to sign in with Google. Please try again.'
-              : `Google sign-in failed: ${reason}`;
-          addToast({ message, type: 'error' });
-        }
+        const message = oauthErrorMessage(result.reason);
+        if (message) addToast({ message, type: 'error' });
         setIsAuthModalOpen(true);
         setAuthModalMode('login');
       }
@@ -141,6 +177,7 @@ function App() {
   }, []);
 
   const detailEntity = usePlayerStore((state) => state.detailEntity);
+  const viewRequestId = usePlayerStore((state) => state.viewRequestId);
 
   const {
     currentView,
@@ -148,8 +185,6 @@ function App() {
     isSidebarOpen,
     trending,
     setTrending,
-    setLoading,
-    setError,
     toggleSidebar,
   } = usePlayerStore();
 
@@ -159,83 +194,107 @@ function App() {
   // for the 'music-search' event no matter how many search fields are on screen.
   useSearchEngine();
 
-  useEffect(() => {
-    const handleUrlRouting = () => {
-      const rawPath = window.location.pathname;
-      const path = rawPath.toLowerCase();
-      const isAuth = useAuthStore.getState().isAuthenticated;
+  const routeFromUrl = useCallback(() => {
+    const rawPath = window.location.pathname;
+    const path = rawPath.toLowerCase();
 
-      if (path === '/terms' || path === '/privacy') {
-        setLegalPage(path === '/terms' ? 'terms' : 'privacy');
-        return;
-      }
-      setLegalPage(null);
+    if (path === '/terms' || path === '/privacy') {
+      setIsAwaitingAuth(false);
+      setLegalPage(path === '/terms' ? 'terms' : 'privacy');
+      return;
+    }
+    setLegalPage(null);
 
-      /* Entity routes carry an id, so they are matched exactly and before the
-         prefix chain below — `path.includes('/album')` would otherwise swallow
-         the id and open the wrong view. Matched against the raw path because
-         catalogue ids are case-sensitive; only the prefix is lower-cased. */
-      const entityMatch = rawPath.match(/^\/(album|genre|playlist)\/([^/]+)$/i);
-      if (entityMatch) {
-        const id = safeDecode(entityMatch[2]);
-        const kind = entityMatch[1].toLowerCase();
-        const store = usePlayerStore.getState();
-        if (kind === 'playlist' && !isAuth) {
-          store.setCurrentView('home');
-          try {
-            window.history.replaceState(null, '', '/');
-          } catch (e) {
-            void e;
-          }
-          return;
-        }
-        if (kind === 'album') store.openAlbum(id);
-        else if (kind === 'genre') store.openGenre(id);
-        else store.openPlaylist(id);
-        return;
-      }
+    /* Until the session check settles "not signed in" only means "not known
+       yet". Redirecting a reload of /favorites then would always land on Home,
+       so a signed-in-only path is held — URL untouched, nothing rendered — and
+       routed again once the auth store is initialized. A check that failed
+       transiently (offline, 5xx) and is being retried is still "not known yet". */
+    const { isAuthenticated: isAuth, isInitialized, isSessionRetryPending: retryPending } = useAuthStore.getState();
+    const waitForAuth = !isAuth && (!isInitialized || retryPending) && isSignedInPath(rawPath);
+    setIsAwaitingAuth(waitForAuth);
+    if (waitForAuth) return;
 
-      const isProtectedRoute =
-        path.includes('/favorites') ||
-        path.includes('/playlists') ||
-        path.includes('/history') ||
-        HISTORY_ALIASES.includes(path);
-
-      if (!isAuth && isProtectedRoute) {
-        usePlayerStore.getState().setCurrentView('home');
+    /* Entity routes carry an id, so they are matched exactly and before the
+       prefix chain below — `path.includes('/album')` would otherwise swallow
+       the id and open the wrong view. Matched against the raw path because
+       catalogue ids are case-sensitive; only the prefix is lower-cased. */
+    const entityMatch = rawPath.match(ENTITY_ROUTE);
+    if (entityMatch) {
+      const id = safeDecode(entityMatch[2]);
+      const kind = entityMatch[1].toLowerCase();
+      const store = usePlayerStore.getState();
+      if (kind === 'playlist' && !isAuth) {
+        store.setCurrentView('home');
         try {
           window.history.replaceState(null, '', '/');
-        } catch {
-          /* The address bar keeps the old path; the view is already on home. */
+        } catch (e) {
+          void e;
         }
         return;
       }
+      if (kind === 'album') store.openAlbum(id);
+      else if (kind === 'genre') store.openGenre(id);
+      else store.openPlaylist(id);
+      return;
+    }
 
-      if (path.includes('/favorites')) {
-        usePlayerStore.getState().setCurrentView('favorites');
-      } else if (path.includes('/playlists')) {
-        usePlayerStore.getState().setCurrentView('playlists');
-      } else if (path.includes('/history') || HISTORY_ALIASES.includes(path)) {
-        usePlayerStore.getState().setCurrentView('history');
-      } else if (path === '/') {
-        usePlayerStore.getState().setCurrentView('home');
-      } else if (path.includes('/discover')) {
-        usePlayerStore.getState().setCurrentView('discover');
-      } else if (path.includes('/search')) {
-        usePlayerStore.getState().setCurrentView('search');
-      } else if (path.includes('/trending')) {
-        usePlayerStore.getState().setCurrentView('trending');
-      } else if (path.includes('/new-releases')) {
-        usePlayerStore.getState().setCurrentView('new-releases');
-      } else if (path.includes('/genres')) {
-        usePlayerStore.getState().setCurrentView('genres');
+    if (!isAuth && isSignedInPath(rawPath)) {
+      usePlayerStore.getState().setCurrentView('home');
+      try {
+        window.history.replaceState(null, '', '/');
+      } catch {
+        /* The address bar keeps the old path; the view is already on home. */
       }
-    };
+      return;
+    }
 
-    handleUrlRouting();
-    window.addEventListener('popstate', handleUrlRouting);
-    return () => window.removeEventListener('popstate', handleUrlRouting);
+    if (path.includes('/favorites')) {
+      usePlayerStore.getState().setCurrentView('favorites');
+    } else if (path.includes('/playlists')) {
+      usePlayerStore.getState().setCurrentView('playlists');
+    } else if (path.includes('/history') || HISTORY_ALIASES.includes(path)) {
+      usePlayerStore.getState().setCurrentView('history');
+    } else if (path === '/') {
+      usePlayerStore.getState().setCurrentView('home');
+    } else if (path.includes('/discover')) {
+      usePlayerStore.getState().setCurrentView('discover');
+    } else if (path.includes('/search')) {
+      usePlayerStore.getState().setCurrentView('search');
+    } else if (path.includes('/trending')) {
+      usePlayerStore.getState().setCurrentView('trending');
+    } else if (path.includes('/new-releases')) {
+      usePlayerStore.getState().setCurrentView('new-releases');
+    } else if (path.includes('/genres')) {
+      usePlayerStore.getState().setCurrentView('genres');
+    }
   }, []);
+
+  useEffect(() => {
+    routeFromUrl();
+    window.addEventListener('popstate', routeFromUrl);
+    return () => window.removeEventListener('popstate', routeFromUrl);
+  }, [routeFromUrl]);
+
+  useEffect(() => {
+    if (isAwaitingAuth && isAuthInitialized && (isAuthenticated || !isSessionRetryPending)) routeFromUrl();
+  }, [isAuthInitialized, isAuthenticated, isSessionRetryPending, isAwaitingAuth, routeFromUrl]);
+
+  /* Any navigation while the deep link is held abandons it, including choosing the
+     view already on screen (Home), so a later successful retry can't pull the
+     listener back to the page they left. */
+  const heldAtRequestRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!isAwaitingAuth) {
+      heldAtRequestRef.current = null;
+      return;
+    }
+    if (heldAtRequestRef.current === null) {
+      heldAtRequestRef.current = viewRequestId;
+      return;
+    }
+    if (viewRequestId !== heldAtRequestRef.current) setIsAwaitingAuth(false);
+  }, [isAwaitingAuth, viewRequestId]);
 
   useEffect(() => {
     if (!isAuthenticated && PROTECTED_VIEWS.includes(currentView)) {
@@ -254,6 +313,7 @@ function App() {
     const path = window.location.pathname.toLowerCase();
     if (path === '/terms' || path === '/privacy') return;
     if (legalPage) return;
+    if (isAwaitingAuth) return;
 
     /* Read the store rather than this render's values. On first mount the URL
        parser above runs in an earlier effect of the same commit, so the closure
@@ -279,13 +339,15 @@ function App() {
         void e;
       }
     }
-  }, [currentView, detailEntity, legalPage]);
+  }, [currentView, detailEntity, legalPage, isAwaitingAuth]);
 
+  /* Fills the shared trending pool. It deliberately leaves the store's
+     isLoading/error alone: those are the search's, and a trending fetch that
+     finished early or failed used to end a search spinner or show as a search
+     error. Every surface that reads the pool renders its own empty state. */
   useEffect(() => {
     const loadTrending = async () => {
       if (trending.length === 0) {
-        setLoading(true);
-        setError(null);
         try {
           if (import.meta.env.DEV) console.log('🎵 Loading trending music tracks...');
           const tracks = await MusicAPI.getTrendingTracks(25);
@@ -293,19 +355,12 @@ function App() {
           if (import.meta.env.DEV) console.log('✅ Loaded trending tracks:', tracks.length);
         } catch (error) {
           console.error('❌ Failed to load trending tracks:', error);
-          const errorMsg =
-            error instanceof Error
-              ? error.message
-              : '🎪 Trending tracks are temporarily unavailable. Try searching for specific genres like rap, electronic, or jazz.';
-          setError(errorMsg);
-        } finally {
-          setLoading(false);
         }
       }
     };
 
     loadTrending();
-  }, [trending.length, setTrending, setLoading, setError]);
+  }, [trending.length, setTrending]);
 
   const theme = usePlayerStore(state => state.theme);
   useEffect(() => {
@@ -343,7 +398,7 @@ function App() {
         return (
           <div className="view-container">
             {detailEntity?.kind === 'album' ? (
-              <Suspense fallback={null}><AlbumPage albumId={detailEntity.id} /></Suspense>
+              <Suspense fallback={null}><AlbumPage key={detailEntity.id} albumId={detailEntity.id} /></Suspense>
             ) : null}
           </div>
         );
@@ -359,7 +414,7 @@ function App() {
         return (
           <div className="view-container">
             {detailEntity?.kind === 'genre' ? (
-              <Suspense fallback={null}><GenrePage genreId={detailEntity.id} /></Suspense>
+              <Suspense fallback={null}><GenrePage key={detailEntity.id} genreId={detailEntity.id} /></Suspense>
             ) : null}
           </div>
         );
@@ -456,9 +511,18 @@ function App() {
     return <LegalPage page={legalPage} />;
   }
 
-  if (isOffline) {
-    return <OfflinePage />;
-  }
+  const retryConnection = () => {
+    if (navigator.onLine) {
+      setIsOffline(false);
+      return;
+    }
+    // A reload tears down the audio element, and offline nothing could restart it.
+    if (usePlayerStore.getState().isPlaying) {
+      addToast({ type: 'info', message: 'You are still offline.' });
+      return;
+    }
+    window.location.reload();
+  };
 
   return (
     <div className="app">
@@ -505,8 +569,25 @@ function App() {
           </div>
         </header>
 
+        {/* Offline replaces only the content: the player and queue stay mounted,
+            because cached songs keep playing and still need pause and skip. */}
         <div className="app-content">
-          {renderMainContent()}
+          {isOffline ? (
+            <OfflinePage onRetry={retryConnection} />
+          ) : isAwaitingAuth ? (
+            /* The first session check is quick, so it shows nothing; a check being retried
+               keeps the destination pending instead of showing guest Home at a signed-in URL. */
+            isAuthInitialized ? (
+              <EmptyState
+                title="Reconnecting to your account"
+                description="We'll open this page as soon as your session is confirmed."
+                actionText="Go to Home"
+                onAction={() => setCurrentView('home')}
+              />
+            ) : null
+          ) : (
+            renderMainContent()
+          )}
         </div>
       </main>
 

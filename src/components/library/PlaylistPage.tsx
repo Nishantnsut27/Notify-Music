@@ -1,9 +1,8 @@
 import { TrackListModern } from '../TrackListModern';
 import { EmptyState } from '../EmptyState';
 import { usePlayerStore } from '../../store/playerStore';
+import { FALLBACK_ART } from '../../utils/artwork';
 import type { QueueContext } from '../../types/types';
-
-const FALLBACK_ART = '/Favicon.png';
 
 interface PlaylistPageProps {
   playlistId: string;

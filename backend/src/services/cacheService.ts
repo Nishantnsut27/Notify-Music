@@ -8,6 +8,7 @@ interface CacheEntry<T> {
 export class CacheService {
   private cache = new Map<string, CacheEntry<unknown>>();
   private inFlightMap = new Map<string, Promise<unknown>>();
+  private generations = new Map<string, number>();
   private ttlMs: number;
 
   constructor(ttlMs: number = config.cacheTtlMs) {
@@ -42,9 +43,20 @@ export class CacheService {
   public delete(key: string): void {
     this.cache.delete(key);
     this.inFlightMap.delete(key);
+    this.generations.set(key, (this.generations.get(key) ?? 0) + 1);
   }
 
-  public async getOrFetch<T>(key: string, fetchFn: () => Promise<T>, customTtlMs?: number, refresh = false): Promise<T> {
+  /**
+   * `resolveTtlMs` may shorten the TTL for a specific result or return 0 to skip caching it
+   * (e.g. degraded fallback data that should not outlive the upstream outage).
+   */
+  public async getOrFetch<T>(
+    key: string,
+    fetchFn: () => Promise<T>,
+    customTtlMs?: number,
+    refresh = false,
+    resolveTtlMs?: (result: T) => number | undefined
+  ): Promise<T> {
     const cached = refresh ? null : this.get<T>(key);
     if (cached !== null) {
       return cached;
@@ -55,23 +67,30 @@ export class CacheService {
       return existingPromise as Promise<T>;
     }
 
-    const promise = (async () => {
-      try {
-        const result = await fetchFn();
-        const isEmpty =
-          result === null ||
-          result === undefined ||
-          (Array.isArray(result) && result.length === 0);
-        if (!isEmpty) {
-          this.set(key, result, customTtlMs);
-        }
-        return result;
-      } finally {
-        this.inFlightMap.delete(key);
+    const generation = this.generations.get(key) ?? 0;
+    const promise: Promise<T> = (async () => {
+      const result = await fetchFn();
+      const isEmpty =
+        result === null ||
+        result === undefined ||
+        (Array.isArray(result) && result.length === 0);
+      const ttlMs = isEmpty ? 0 : resolveTtlMs ? resolveTtlMs(result) ?? customTtlMs : customTtlMs;
+      // A delete() during the fetch means this result may predate the invalidating write.
+      if (ttlMs !== 0 && (this.generations.get(key) ?? 0) === generation) {
+        this.set(key, result, ttlMs);
       }
+      return result;
     })();
 
     this.inFlightMap.set(key, promise);
+    // Only clear our own entry; a delete() + newer fetch may already own this key.
+    promise
+      .finally(() => {
+        if (this.inFlightMap.get(key) === promise) {
+          this.inFlightMap.delete(key);
+        }
+      })
+      .catch(() => {});
     return promise;
   }
 

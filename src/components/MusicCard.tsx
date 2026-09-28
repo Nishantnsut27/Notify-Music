@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Track } from '../types/types';
 import { formatArtistNames } from '../utils/formatters';
-
-const FALLBACK_ART = '/Favicon.png';
+import { FALLBACK_ART, showFallbackArt } from '../utils/artwork';
 
 interface MusicCardProps {
   track: Track;
@@ -54,11 +53,7 @@ export function MusicCard({
           alt=""
           loading="lazy"
           decoding="async"
-          onError={(e) => {
-            const img = e.currentTarget;
-            if (img.src.endsWith(FALLBACK_ART)) return;
-            img.src = FALLBACK_ART;
-          }}
+          onError={showFallbackArt}
         />
 
         {showRank && rank !== undefined && (

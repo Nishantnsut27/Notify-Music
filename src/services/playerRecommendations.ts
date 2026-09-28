@@ -1,7 +1,10 @@
+import { PLAYER_DEFAULTS } from '../config/constants';
 import { usePlayerStore } from '../store/playerStore';
 import { MusicAPI } from './musicApi';
 
-const TOP_UP_THRESHOLD = 2;
+// Top up while every prefetched song is still ahead, so the continuation is
+// known and downloaded before the queue runs out on a locked phone.
+const TOP_UP_THRESHOLD = PLAYER_DEFAULTS.PREFETCH_TRACK_COUNT;
 const REQUEST_BATCH = 10;
 
 /** Queue maintenance must continue when React isn't rendering a hidden page. */

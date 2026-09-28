@@ -31,10 +31,10 @@ export function GuestExperience() {
   if (currentView === 'new-releases') return <NewReleasesPage />;
   if (currentView === 'genres') return <GenresPage />;
   if (currentView === 'genre' && detailEntity?.kind === 'genre') {
-    return <GenrePage genreId={detailEntity.id} />;
+    return <GenrePage key={detailEntity.id} genreId={detailEntity.id} />;
   }
   if (currentView === 'album' && detailEntity?.kind === 'album') {
-    return <AlbumPage albumId={detailEntity.id} />;
+    return <AlbumPage key={detailEntity.id} albumId={detailEntity.id} />;
   }
   return <GuestHome />;
 }

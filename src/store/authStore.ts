@@ -1,15 +1,18 @@
 import { create } from 'zustand';
 import { authApi, type UserProfile } from '../services/authApi';
 import { ApiError } from '../services/apiClient';
-import { getStoredToken, setStoredToken, removeStoredToken } from '../services/tokenStorage';
+import { getStoredToken, setStoredToken, removeStoredToken, getLibraryOwner } from '../services/tokenStorage';
 
 interface AuthState {
   user: UserProfile | null;
   token: string | null;
   isAuthenticated: boolean;
   isInitialized: boolean;
+  /** The last session check failed transiently (offline, 5xx) and another attempt is scheduled. */
+  isSessionRetryPending: boolean;
   isLoading: boolean;
   error: string | null;
+  errorCode: string | null;
 
   login: (data: { email: string; password: string; rememberMe?: boolean }) => Promise<boolean>;
   signup: (data: { fullName: string; email: string; password: string }) => Promise<boolean>;
@@ -19,18 +22,47 @@ interface AuthState {
   clearError: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+/* Bumped by every explicit sign-in or sign-out, so a session check that was
+   already in flight cannot overwrite the outcome the user just chose. */
+let authGeneration = 0;
+
+const AUTH_RETRY_DELAYS_MS = [5_000, 15_000, 45_000];
+let authRetryAttempt = 0;
+let authRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function syncLibrary(): void {
+  import('./playerStore').then(({ usePlayerStore }) => {
+    usePlayerStore.getState().syncCloudUserData();
+  });
+}
+
+/** The one way a signed-in account's library leaves the device. */
+function clearSignedInLibrary(): Promise<void> {
+  return import('./playerStore').then(({ usePlayerStore }) => {
+    usePlayerStore.getState().clearUserLibrary();
+  });
+}
+
+/** Whether this device holds anything of a signed-in account worth clearing or re-checking. */
+function hasSessionTrace(): boolean {
+  return getStoredToken() !== null || getLibraryOwner() !== null;
+}
+
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: getStoredToken(),
   isAuthenticated: false,
   isInitialized: false,
+  isSessionRetryPending: false,
   isLoading: false,
   error: null,
+  errorCode: null,
 
   login: async (credentials) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, errorCode: null });
     try {
       const response = await authApi.login(credentials);
+      authGeneration += 1;
       if (response.token) {
         setStoredToken(response.token, credentials.rememberMe || false);
       }
@@ -38,21 +70,23 @@ export const useAuthStore = create<AuthState>((set) => ({
         user: response.user,
         token: response.token || getStoredToken(),
         isAuthenticated: true,
+        isInitialized: true,
+        isSessionRetryPending: false,
         isLoading: false,
         error: null,
       });
-      import('./playerStore').then(({ usePlayerStore }) => {
-        usePlayerStore.getState().syncCloudUserData();
-      });
+      syncLibrary();
       return true;
     } catch (err) {
       const errorMessage = err instanceof ApiError ? err.message : 'Invalid email or password.';
+      const errorCode = err instanceof ApiError ? (err.details as { code?: string } | null)?.code ?? null : null;
       set({
         user: null,
         token: null,
         isAuthenticated: false,
         isLoading: false,
         error: errorMessage,
+        errorCode,
       });
       return false;
     }
@@ -62,6 +96,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const response = await authApi.register(credentials);
+      authGeneration += 1;
       if (response.token) {
         setStoredToken(response.token, true);
       }
@@ -69,12 +104,12 @@ export const useAuthStore = create<AuthState>((set) => ({
         user: response.user,
         token: response.token || getStoredToken(),
         isAuthenticated: true,
+        isInitialized: true,
+        isSessionRetryPending: false,
         isLoading: false,
         error: null,
       });
-      import('./playerStore').then(({ usePlayerStore }) => {
-        usePlayerStore.getState().syncCloudUserData();
-      });
+      syncLibrary();
       return true;
     } catch (err) {
       const errorMessage = err instanceof ApiError ? err.message : 'Registration failed. Please try again.';
@@ -90,6 +125,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    authGeneration += 1;
     set({ isLoading: true });
     try {
       await authApi.logout();
@@ -101,9 +137,11 @@ export const useAuthStore = create<AuthState>((set) => ({
         user: null,
         token: null,
         isAuthenticated: false,
+        isSessionRetryPending: false,
         isLoading: false,
         error: null,
       });
+      clearSignedInLibrary();
       import('./playerStore').then(({ usePlayerStore }) => {
         const store = usePlayerStore.getState();
         store.clearResults();
@@ -114,18 +152,8 @@ export const useAuthStore = create<AuthState>((set) => ({
           isLoading: false,
           error: null,
           currentView: 'search',
-          recentlyPlayed: [],
-          listeningHistory: [],
-          favorites: [],
-          playlists: [],
           relatedMusic: null,
         });
-        try {
-          localStorage.removeItem('playlists');
-          localStorage.removeItem('favorites');
-        } catch {
-          /* Storage can be blocked; the in-memory store above is already cleared. */
-        }
         sessionStorage.removeItem('player-playback');
         window.dispatchEvent(new CustomEvent('reset-search-state'));
       });
@@ -133,27 +161,52 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   checkAuth: async () => {
+    const generation = authGeneration;
+    const hadSession = hasSessionTrace();
+    const superseded = () => {
+      if (generation === authGeneration) return false;
+      set({ isInitialized: true });
+      return true;
+    };
     try {
       const response = await authApi.getCurrentUser();
+      if (superseded()) return;
+      authRetryAttempt = 0;
       set({
         user: response.user,
         isAuthenticated: true,
         isInitialized: true,
+        isSessionRetryPending: false,
         error: null,
       });
-      import('./playerStore').then(({ usePlayerStore }) => {
-        usePlayerStore.getState().syncCloudUserData();
-      });
+      syncLibrary();
       return;
-    } catch {
-      removeStoredToken();
+    } catch (err) {
+      if (superseded()) return;
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        removeStoredToken();
+        set({
+          user: null,
+          token: null,
+          isAuthenticated: false,
+          isInitialized: true,
+          isSessionRetryPending: false,
+        });
+        if (hadSession) clearSignedInLibrary();
+        return;
+      }
     }
-    set({
-      user: null,
-      token: null,
-      isAuthenticated: false,
-      isInitialized: true,
-    });
+
+    /* Offline, a 5xx or a cold-starting server says nothing about the session:
+       keep the token and the library, and look again shortly. */
+    const willRetry = hadSession && (authRetryTimer !== null || authRetryAttempt < AUTH_RETRY_DELAYS_MS.length);
+    set({ isInitialized: true, isSessionRetryPending: willRetry });
+    if (hadSession && !authRetryTimer && authRetryAttempt < AUTH_RETRY_DELAYS_MS.length) {
+      authRetryTimer = setTimeout(() => {
+        authRetryTimer = null;
+        if (!get().isAuthenticated) get().checkAuth();
+      }, AUTH_RETRY_DELAYS_MS[authRetryAttempt++]);
+    }
   },
 
   completeOAuth: async () => {
@@ -171,22 +224,21 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (status === 'success') {
       try {
         const response = await authApi.getCurrentUser();
+        authGeneration += 1;
         set({
           user: response.user,
           isAuthenticated: true,
           isInitialized: true,
+          isSessionRetryPending: false,
           error: null,
         });
         cleanUrl();
-        import('./playerStore').then(({ usePlayerStore }) => {
-          usePlayerStore.getState().syncCloudUserData();
-        });
+        syncLibrary();
         return { status: 'success' };
-      } catch (err) {
+      } catch {
         cleanUrl();
         set({ isInitialized: true });
-        const message = err instanceof ApiError ? err.message : 'Unable to reach the authentication service.';
-        return { status: 'error', reason: message };
+        return { status: 'error', reason: 'failed' };
       }
     }
 
@@ -199,11 +251,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     return { status: 'none' };
   },
 
-  clearError: () => set({ error: null }),
+  clearError: () => set({ error: null, errorCode: null }),
 }));
 
 if (typeof window !== 'undefined') {
   window.addEventListener('auth:session-expired', () => {
+    const hadSession = useAuthStore.getState().isAuthenticated || getLibraryOwner() !== null;
     useAuthStore.setState({ user: null, token: null, isAuthenticated: false });
+    if (hadSession) clearSignedInLibrary();
   });
 }

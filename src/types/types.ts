@@ -81,24 +81,6 @@ export interface CuratedSection {
   updatedAt: string;
 }
 
-export interface RecommendationContext {
-  trackId: string;
-  artistName: string;
-  albumName: string;
-  genres: string[];
-}
-
-export interface JamendoApiResponse<T> {
-  headers: {
-    status: string;
-    code: number;
-    error_message: string;
-    warnings: string;
-    results_fullcount: number;
-  };
-  results: T[];
-}
-
 export interface PlaylistTrack extends Track {
   addedAt: number;
 }
@@ -182,24 +164,4 @@ export interface SearchState {
   isLoading: boolean;
   error: string | null;
   trending: Track[];
-}
-
-export interface AppState {
-  playlists: Playlist[];
-  favorites: Track[];
-  player: PlayerState;
-  search: SearchState;
-  ui: {
-    isSidebarOpen: boolean;
-    currentView: 'search' | 'playlists' | 'favorites';
-    theme: 'light' | 'dark';
-  };
-}
-
-export interface KeyboardShortcuts {
-  ' ': () => void;
-  'ArrowLeft': () => void;
-  'ArrowRight': () => void;
-  'ArrowUp': () => void;
-  'ArrowDown': () => void;
 }

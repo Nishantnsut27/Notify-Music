@@ -40,17 +40,6 @@ export const connectDatabase = async (): Promise<typeof mongoose> => {
       console.log('🔄 [MongoDB] Connection re-established.');
     });
 
-    // Handle graceful shutdown on process termination
-    process.on('SIGINT', async () => {
-      await disconnectDatabase();
-      process.exit(0);
-    });
-
-    process.on('SIGTERM', async () => {
-      await disconnectDatabase();
-      process.exit(0);
-    });
-
     console.log('⏳ [MongoDB] Connecting to Atlas cluster...');
 
     const db = await mongoose.connect(config.mongodbUri, {

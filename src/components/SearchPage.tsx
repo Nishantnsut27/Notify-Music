@@ -26,9 +26,8 @@ export function SearchPage() {
   const committed = query.trim();
   const hasQuery = typed.length > 0 || committed.length > 0;
   /*
-   * isLoading is shared with the trending fetch other views run, so it is only
-   * trusted here while there is something in the field. Without that guard a
-   * freshly opened Search page renders skeletons for a search nobody asked for.
+   * Only trusted while there is something in the field, so a freshly opened
+   * Search page never renders skeletons for a search nobody asked for.
    */
   const searching = isLoading && typed.length > 0;
   /*

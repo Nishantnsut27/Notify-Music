@@ -3,7 +3,6 @@ import { MusicService } from '../services/musicService.js';
 import { StandardApiResponse } from '../models/music.model.js';
 import type { ArtistSortBy, ArtistSortOrder } from '../providers/musicProvider.interface.js';
 import { logger, serializeError } from '../utils/logger.js';
-import { discoveryRefreshService } from '../services/discoveryRefreshService.js';
 
 const musicService = new MusicService();
 
@@ -28,21 +27,10 @@ function parseArtistSortOrder(raw: unknown): ArtistSortOrder {
 }
 
 export class MusicController {
-  static async getDiscovery(_req: Request, res: Response): Promise<void> {
-    try {
-      const snapshot = await discoveryRefreshService.getActiveSnapshot();
-      if (!snapshot) { res.status(404).json({ success: false, data: null, error: 'Discovery is being prepared. Please try again shortly.' }); return; }
-      res.status(200).json({ success: true, data: { generatedAt: snapshot.generatedAt, sections: snapshot.sections } });
-    } catch (error) {
-      logger.error('MusicController', 'Get discovery error', { error: serializeError(error) });
-      res.status(500).json({ success: false, data: null, error: 'Failed to retrieve discovery music.' });
-    }
-  }
-
   static async search(req: Request, res: Response): Promise<void> {
     try {
       const query = (req.query.q || req.query.query || '').toString().trim();
-      const limit = parseInt((req.query.limit || '20').toString(), 10);
+      const limit = parsePositiveInt(req.query.limit, 20, 50) || 20;
 
       if (!query) {
         res.status(400).json({
@@ -248,7 +236,7 @@ export class MusicController {
   static async getSuggestions(req: Request, res: Response): Promise<void> {
     try {
       const songId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-      const limit = parseInt((req.query.limit || '10').toString(), 10);
+      const limit = parsePositiveInt(req.query.limit, 10, 30) || 10;
       if (!songId) {
         res.status(400).json({
           success: false,

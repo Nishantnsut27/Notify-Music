@@ -3,9 +3,8 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { SkeletonTrackList } from './Skeletons';
 import { useAlbumDetail } from '../hooks/useAlbumDetail';
 import { usePlayerStore } from '../store/playerStore';
+import { FALLBACK_ART } from '../utils/artwork';
 import type { Album } from '../types/types';
-
-const FALLBACK_ART = '/Favicon.png';
 
 /** The year, when the provider sent one. Never inferred. */
 function albumYear(album: Album): string | null {

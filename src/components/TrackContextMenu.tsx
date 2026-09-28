@@ -7,6 +7,7 @@ import { useToastStore } from '../store/toastStore';
 import { useQueueActions } from '../hooks/useQueueActions';
 import { requireAuth } from '../utils/requireAuth';
 import { formatArtistNames } from '../utils/formatters';
+import { FALLBACK_ART } from '../utils/artwork';
 
 const MOBILE_BREAKPOINT = 768;
 const MENU_WIDTH = 244;
@@ -125,24 +126,42 @@ export function TrackContextMenu({
       triggerRef.current?.focus();
     };
 
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (menuRef.current?.contains(target)) return;
-      if (triggerRef.current?.contains(target)) return;
+    const isOutside = (target: EventTarget | null) =>
+      target instanceof Node
+      && !menuRef.current?.contains(target)
+      && !triggerRef.current?.contains(target);
+
+    /* A mouse closes the popover on press. A touch closes it on the tap's click
+       and swallows that click: closing on touchstart let the synthesized click
+       land on whatever sat underneath and start that song. The mobile sheet
+       needs neither — its overlay receives the tap and dismisses itself. */
+    let swallowNextClick = false;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!isOutside(event.target)) return;
+      if (event.pointerType === 'mouse') dismiss();
+      else swallowNextClick = true;
+    };
+    const handleClick = (event: MouseEvent) => {
+      if (!swallowNextClick) return;
+      swallowNextClick = false;
+      if (!isOutside(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
       dismiss();
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('touchstart', handlePointerDown, { passive: true });
+    if (!isMobile) {
+      document.addEventListener('pointerdown', handlePointerDown, true);
+      document.addEventListener('click', handleClick, true);
+    }
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('click', handleClick, true);
     };
-  }, [isOpen]);
+  }, [isOpen, isMobile]);
 
   useEffect(() => {
     if (!isOpen || !isMobile) return;
@@ -421,7 +440,7 @@ export function TrackContextMenu({
             <div className="action-menu-sheet-header">
               <img
                 className="action-menu-sheet-art"
-                src={track.image || track.album_image || '/Favicon.png'}
+                src={track.image || track.album_image || FALLBACK_ART}
                 alt=""
               />
               <div className="action-menu-sheet-text">

@@ -16,7 +16,9 @@ export interface AlbumDetailState {
 
 export function useAlbumDetail(albumId: string | null): AlbumDetailState {
   const [album, setAlbum] = useState<Album | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  /* Loading from the first render: before the effect starts the request there
+     is no album and no error, which would otherwise read as "not found". */
+  const [isLoading, setIsLoading] = useState(Boolean(albumId));
   const [error, setError] = useState<string | null>(null);
 
   /* A stale response must not replace the album the listener is looking at now. */
@@ -24,12 +26,16 @@ export function useAlbumDetail(albumId: string | null): AlbumDetailState {
 
   useEffect(() => {
     if (!albumId) {
+      sequenceRef.current += 1;
       setAlbum(null);
       setError(null);
+      setIsLoading(false);
       return;
     }
 
     const requestId = ++sequenceRef.current;
+    // The previous album is not this one; keeping it would show it under the new id.
+    setAlbum(null);
     setIsLoading(true);
     setError(null);
 

@@ -1,5 +1,6 @@
 import multer from 'multer';
 import { Request } from 'express';
+import { AppError } from '../utils/AppError.js';
 
 const storage = multer.memoryStorage();
 
@@ -8,7 +9,7 @@ const fileFilter = (_req: Request, file: Express.Multer.File, cb: multer.FileFil
   if (allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid image format. Allowed formats: JPEG, PNG, WEBP.'));
+    cb(new AppError('Invalid image format. Allowed formats: JPEG, PNG, WEBP.', 400));
   }
 };
 

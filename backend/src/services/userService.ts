@@ -9,8 +9,33 @@ import { CloudinaryService } from './cloudinaryService.js';
 import { AppError } from '../utils/AppError.js';
 
 const MAX_PLAYLIST_TRACKS = 500;
+const MAX_PLAYLISTS_PER_USER = 200;
 const MAX_PLAYLIST_NAME_LENGTH = 100;
 const MAX_PLAYLIST_DESCRIPTION_LENGTH = 500;
+const MAX_RECENTLY_PLAYED = 50;
+const MAX_LISTENING_HISTORY = 500;
+const MAX_SEARCH_QUERY_LENGTH = 120;
+const MAX_PLAY_DURATION_SECONDS = 24 * 60 * 60;
+
+const playlistNotFound = () => new AppError('Playlist not found or access denied', 404);
+
+const assertPlaylistId = (playlistId: string): void => {
+  if (!mongoose.isValidObjectId(playlistId)) {
+    throw playlistNotFound();
+  }
+};
+
+const trimToNewest = async (
+  model: mongoose.Model<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+  userId: string,
+  sortField: string,
+  keep: number
+): Promise<void> => {
+  const stale = await model.find({ user: userId }).sort({ [sortField]: -1 }).skip(keep).select('_id').lean();
+  if (stale.length) {
+    await model.deleteMany({ _id: { $in: stale.map((item: { _id: unknown }) => item._id) } });
+  }
+};
 
 const toStringArray = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
@@ -89,15 +114,14 @@ export class UserService {
   }
 
   public static async addSearchHistory(userId: string, query: string) {
-    const cleanQuery = query.trim().replace(/\s+/g, ' ');
+    const cleanQuery = query.trim().replace(/\s+/g, ' ').slice(0, MAX_SEARCH_QUERY_LENGTH);
     if (!cleanQuery) return;
     await SearchHistory.findOneAndUpdate(
       { user: userId, normalizedQuery: cleanQuery.toLowerCase() },
       { user: userId, query: cleanQuery, normalizedQuery: cleanQuery.toLowerCase(), searchedAt: new Date() },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
-    const stale = await SearchHistory.find({ user: userId }).sort({ searchedAt: -1 }).skip(10).select('_id').lean();
-    if (stale.length) await SearchHistory.deleteMany({ _id: { $in: stale.map(item => item._id) } });
+    await trimToNewest(SearchHistory, userId, 'searchedAt', 10);
   }
 
   public static async removeSearchHistory(userId: string, query: string) {
@@ -164,7 +188,19 @@ export class UserService {
     }));
   }
 
+  public static async countLibrary(userId: string) {
+    const [favoritesCount, playlistsCount] = await Promise.all([
+      Favorite.countDocuments({ user: userId }),
+      PlaylistModel.countDocuments({ owner: userId }),
+    ]);
+    return { favoritesCount, playlistsCount };
+  }
+
   public static async createPlaylist(userId: string, name: string, description = '', isPublic = false) {
+    if (await PlaylistModel.countDocuments({ owner: userId }) >= MAX_PLAYLISTS_PER_USER) {
+      throw new AppError(`You can have at most ${MAX_PLAYLISTS_PER_USER} playlists.`, 400);
+    }
+
     const playlist = await PlaylistModel.create({
       name: normalizePlaylistName(name),
       description: normalizePlaylistDescription(description),
@@ -186,9 +222,10 @@ export class UserService {
   }
 
   public static async updatePlaylist(userId: string, playlistId: string, data: { name?: string; description?: string; isPublic?: boolean }) {
+    assertPlaylistId(playlistId);
     const playlist = await PlaylistModel.findOne({ _id: playlistId, owner: userId });
     if (!playlist) {
-      throw new AppError('Playlist not found or access denied', 404);
+      throw playlistNotFound();
     }
 
     if (data.name !== undefined) playlist.name = normalizePlaylistName(data.name);
@@ -210,49 +247,54 @@ export class UserService {
   }
 
   public static async deletePlaylist(userId: string, playlistId: string) {
+    assertPlaylistId(playlistId);
     const result = await PlaylistModel.deleteOne({ _id: playlistId, owner: userId });
     if (result.deletedCount === 0) {
-      throw new AppError('Playlist not found or access denied', 404);
+      throw playlistNotFound();
     }
     return { id: playlistId };
   }
 
   public static async addTrackToPlaylist(userId: string, playlistId: string, trackData: Record<string, unknown>) {
-    const playlist = await PlaylistModel.findOne({ _id: playlistId, owner: userId });
-    if (!playlist) {
-      throw new AppError('Playlist not found or access denied', 404);
-    }
-
+    assertPlaylistId(playlistId);
     const newTrack = normalizeTrackData(trackData);
 
+    // The duplicate and capacity checks live in the filter so concurrent adds cannot both push.
+    const updated = await PlaylistModel.findOneAndUpdate(
+      {
+        _id: playlistId,
+        owner: userId,
+        'tracks.id': { $ne: newTrack.id },
+        [`tracks.${MAX_PLAYLIST_TRACKS - 1}`]: { $exists: false },
+      },
+      { $push: { tracks: newTrack } },
+      { new: true, runValidators: true }
+    );
+
+    if (updated) {
+      return { id: updated._id.toString(), tracks: updated.tracks };
+    }
+
+    const playlist = await PlaylistModel.findOne({ _id: playlistId, owner: userId });
+    if (!playlist) {
+      throw playlistNotFound();
+    }
     if (playlist.tracks.some((t) => t.id === newTrack.id)) {
-      return {
-        id: playlist._id.toString(),
-        tracks: playlist.tracks,
-      };
+      return { id: playlist._id.toString(), tracks: playlist.tracks };
     }
-
-    if (playlist.tracks.length >= MAX_PLAYLIST_TRACKS) {
-      throw new AppError(`A playlist cannot hold more than ${MAX_PLAYLIST_TRACKS} tracks.`, 400);
-    }
-
-    playlist.tracks.push(newTrack);
-    await playlist.save();
-
-    return {
-      id: playlist._id.toString(),
-      tracks: playlist.tracks,
-    };
+    throw new AppError(`A playlist cannot hold more than ${MAX_PLAYLIST_TRACKS} tracks.`, 400);
   }
 
   public static async removeTrackFromPlaylist(userId: string, playlistId: string, trackId: string) {
-    const playlist = await PlaylistModel.findOne({ _id: playlistId, owner: userId });
+    assertPlaylistId(playlistId);
+    const playlist = await PlaylistModel.findOneAndUpdate(
+      { _id: playlistId, owner: userId },
+      { $pull: { tracks: { id: trackId } } },
+      { new: true }
+    );
     if (!playlist) {
-      throw new AppError('Playlist not found or access denied', 404);
+      throw playlistNotFound();
     }
-
-    playlist.tracks = playlist.tracks.filter((t) => t.id !== trackId);
-    await playlist.save();
 
     return {
       id: playlist._id.toString(),
@@ -261,9 +303,10 @@ export class UserService {
   }
 
   public static async reorderPlaylistTracks(userId: string, playlistId: string, tracks: unknown) {
+    assertPlaylistId(playlistId);
     const playlist = await PlaylistModel.findOne({ _id: playlistId, owner: userId });
     if (!playlist) {
-      throw new AppError('Playlist not found or access denied', 404);
+      throw playlistNotFound();
     }
 
     if (!Array.isArray(tracks)) {
@@ -282,11 +325,15 @@ export class UserService {
       throw new AppError('The track order contains duplicate track ids.', 400);
     }
 
-    if (requestedIds.length !== playlist.tracks.length) {
+    const existingById = new Map<string, ISongSubDoc>();
+    for (const track of playlist.tracks) {
+      if (!existingById.has(track.id)) existingById.set(track.id, track);
+    }
+
+    if (requestedIds.length !== existingById.size) {
       throw new AppError('The track order must contain every track already in the playlist.', 400);
     }
 
-    const existingById = new Map(playlist.tracks.map((track) => [track.id, track]));
     const reordered = requestedIds.map((id) => {
       const existing = existingById.get(id);
       if (!existing) {
@@ -309,10 +356,8 @@ export class UserService {
   // =========================================================================
 
   public static async addRecentlyPlayed(userId: string, trackData: Record<string, unknown>) {
-    if (!getTrackId(trackData)) return;
-
     const normalized = normalizeTrackData(trackData);
-    await RecentlyPlayed.findOneAndUpdate(
+    const upsert = () => RecentlyPlayed.findOneAndUpdate(
       { user: userId, trackId: normalized.id },
       {
         user: userId,
@@ -322,6 +367,15 @@ export class UserService {
       },
       { upsert: true, new: true }
     );
+
+    try {
+      await upsert();
+    } catch (error) {
+      // Two concurrent upserts for a new track race on the unique index; the retry updates the winner's row.
+      if ((error as { code?: number })?.code !== 11000) throw error;
+      await upsert();
+    }
+    await trimToNewest(RecentlyPlayed, userId, 'playedAt', MAX_RECENTLY_PLAYED);
   }
 
   public static async getRecentlyPlayed(userId: string, limit = 20) {
@@ -337,8 +391,6 @@ export class UserService {
   }
 
   public static async recordListeningHistory(userId: string, trackData: Record<string, unknown>, playDurationSeconds = 0, completed = false) {
-    if (!getTrackId(trackData)) return;
-
     const normalized = normalizeTrackData(trackData);
     const duration = Number(playDurationSeconds);
 
@@ -346,10 +398,11 @@ export class UserService {
       user: userId,
       trackId: normalized.id,
       trackData: normalized,
-      playDurationSeconds: Number.isFinite(duration) ? Math.max(0, duration) : 0,
+      playDurationSeconds: Number.isFinite(duration) ? Math.min(Math.max(0, duration), MAX_PLAY_DURATION_SECONDS) : 0,
       completed: completed === true,
       playedAt: new Date(),
     });
+    await trimToNewest(ListeningHistory, userId, 'playedAt', MAX_LISTENING_HISTORY);
   }
 
   public static async getListeningHistory(userId: string, limit = 50) {
@@ -370,17 +423,18 @@ export class UserService {
   // Profile Management
   // =========================================================================
 
-  public static async updateUserProfile(userId: string, data: { fullName?: string; avatar?: string }) {
+  public static async updateUserProfile(userId: string, data: { fullName?: unknown }) {
     const user = await User.findById(userId);
     if (!user) {
       throw new AppError('User not found', 404);
     }
 
-    if (data.fullName !== undefined && data.fullName.trim()) {
-      user.fullName = data.fullName.trim();
-    }
-    if (data.avatar !== undefined) {
-      user.avatar = data.avatar;
+    if (data.fullName !== undefined) {
+      const fullName = typeof data.fullName === 'string' ? data.fullName.trim() : '';
+      if (fullName.length < 2 || fullName.length > 100) {
+        throw new AppError('Full name must be between 2 and 100 characters.', 400);
+      }
+      user.fullName = fullName;
     }
 
     await user.save();
@@ -402,24 +456,34 @@ export class UserService {
    * Upload/replace user avatar using Cloudinary with automatic deletion of previous asset
    */
   public static async uploadAvatar(userId: string, fileBuffer: Buffer) {
-    const user = await User.findById(userId);
-    if (!user) {
+    if (!(await User.exists({ _id: userId }))) {
       throw new AppError('User not found', 404);
     }
 
-    // Delete existing Cloudinary image asset if present
-    if (user.avatarPublicId) {
-      await CloudinaryService.deleteAvatar(user.avatarPublicId);
-    }
-
-    // Upload new image buffer to Cloudinary
+    // Upload first so a failed upload never leaves the profile pointing at a deleted image.
     const uploadResult = await CloudinaryService.uploadAvatarBuffer(fileBuffer);
 
-    user.avatarUrl = uploadResult.url;
-    user.avatarPublicId = uploadResult.public_id;
-    await user.save();
+    let previous;
+    try {
+      previous = await User.findOneAndUpdate(
+        { _id: userId },
+        { $set: { avatarUrl: uploadResult.url, avatarPublicId: uploadResult.public_id } },
+        { new: false }
+      );
+    } catch (error) {
+      await CloudinaryService.deleteAvatar(uploadResult.public_id);
+      throw error;
+    }
 
-    console.log(`🖼️ [Cloudinary] Avatar updated for user ${user.email}: ${uploadResult.url}`);
+    if (!previous) {
+      await CloudinaryService.deleteAvatar(uploadResult.public_id);
+      throw new AppError('User not found', 404);
+    }
+    if (previous.avatarPublicId && previous.avatarPublicId !== uploadResult.public_id) {
+      await CloudinaryService.deleteAvatar(previous.avatarPublicId);
+    }
+
+    console.log(`🖼️ [Cloudinary] Avatar updated for user ${previous.email}: ${uploadResult.url}`);
 
     return {
       url: uploadResult.url,

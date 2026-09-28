@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from '../services/authService.js';
-import { setAuthCookies, clearAuthCookies } from '../utils/token.utils.js';
+import { setAuthCookies, setAccessCookie, clearAuthCookies } from '../utils/token.utils.js';
 import { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import {
   generateOAuthState,
@@ -73,9 +73,9 @@ export class AuthController {
 
   public static async register(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { user, accessToken, refreshToken } = await AuthService.registerUser(req.body);
+      const { user, accessToken, refreshToken, persistent } = await AuthService.registerUser(req.body);
 
-      setAuthCookies(res, accessToken, refreshToken);
+      setAuthCookies(res, accessToken, refreshToken, persistent);
 
       res.status(201).json({
         success: true,
@@ -90,9 +90,9 @@ export class AuthController {
 
   public static async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { user, accessToken, refreshToken } = await AuthService.loginUser(req.body);
+      const { user, accessToken, refreshToken, persistent } = await AuthService.loginUser(req.body);
 
-      setAuthCookies(res, accessToken, refreshToken);
+      setAuthCookies(res, accessToken, refreshToken, persistent);
 
       res.status(200).json({
         success: true,
@@ -113,9 +113,13 @@ export class AuthController {
         return;
       }
 
-      const { accessToken: newAccessToken, refreshToken: newRefreshToken, user } = await AuthService.refreshToken(refreshToken);
+      const { accessToken: newAccessToken, refreshToken: newRefreshToken, user, persistent } = await AuthService.refreshToken(refreshToken);
 
-      setAuthCookies(res, newAccessToken, newRefreshToken);
+      if (newRefreshToken) {
+        setAuthCookies(res, newAccessToken, newRefreshToken, persistent);
+      } else {
+        setAccessCookie(res, newAccessToken, persistent);
+      }
 
       res.status(200).json({
         success: true,
@@ -128,14 +132,10 @@ export class AuthController {
     }
   }
 
-  public static async logout(req: AuthenticatedRequest, res: Response): Promise<void> {
-    if (req.user) {
-      await AuthService.revokeRefreshToken(req.user._id.toString()).catch(() => {});
-    } else {
-      const refreshToken = req.cookies?.refresh_token || req.body?.refreshToken;
-      if (refreshToken) {
-        await AuthService.revokeRefreshTokenByToken(refreshToken).catch(() => {});
-      }
+  public static async logout(req: Request, res: Response): Promise<void> {
+    const refreshToken = req.cookies?.refresh_token || req.body?.refreshToken;
+    if (typeof refreshToken === 'string' && refreshToken) {
+      await AuthService.revokeSession(refreshToken).catch(() => {});
     }
     clearAuthCookies(res);
 
@@ -171,11 +171,19 @@ export class AuthController {
         return;
       }
 
-      await AuthService.changePassword(req.user!._id.toString(), currentPassword, newPassword);
+      const { accessToken, refreshToken, persistent } = await AuthService.changePassword(
+        req.user!._id.toString(),
+        currentPassword,
+        newPassword,
+        req.cookies?.refresh_token
+      );
+
+      setAuthCookies(res, accessToken, refreshToken, persistent);
 
       res.status(200).json({
         success: true,
         message: 'Password changed successfully.',
+        token: accessToken,
       });
     } catch (error) {
       next(error);
@@ -259,33 +267,14 @@ export class AuthController {
     }
   }
 
-  public static async verifyEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const { token } = req.body;
-      if (!token) {
-        res.status(400).json({ success: false, error: 'Verification token is required.' });
-        return;
-      }
-
-      const user = await AuthService.verifyEmail(token);
-
-      res.status(200).json({
-        success: true,
-        message: 'Email address verified successfully.',
-        user,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
   public static async googleAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const state = generateOAuthState();
+      // Google redirects back with a top-level GET, which carries Lax cookies but never Strict ones.
       res.cookie(OAUTH_STATE_COOKIE, state, {
         httpOnly: true,
         secure: config.cookieSecure,
-        sameSite: config.cookieSameSite,
+        sameSite: 'lax',
         path: '/api/auth',
         maxAge: OAUTH_STATE_MAX_AGE_MS,
       });
@@ -303,7 +292,7 @@ export class AuthController {
       res.clearCookie(OAUTH_STATE_COOKIE, {
         httpOnly: true,
         secure: config.cookieSecure,
-        sameSite: config.cookieSameSite,
+        sameSite: 'lax',
         path: '/api/auth',
       });
     }
@@ -323,8 +312,8 @@ export class AuthController {
 
     try {
       const identity = await validateGoogleCode(String(code));
-      const { accessToken, refreshToken } = await AuthService.authenticateWithGoogle(identity);
-      setAuthCookies(res, accessToken, refreshToken);
+      const { accessToken, refreshToken, persistent } = await AuthService.authenticateWithGoogle(identity);
+      setAuthCookies(res, accessToken, refreshToken, persistent);
       redirectToFrontend(res, '/?auth=success');
     } catch {
       redirectToFrontend(res, '/?auth=error&reason=failed');

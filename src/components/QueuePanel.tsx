@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { formatDuration, formatArtistNames } from '../utils/formatters';
+import { FALLBACK_ART } from '../utils/artwork';
 import type { QueueContext, QueueEntry } from '../types/types';
-
-const FALLBACK_ART = '/Favicon.png';
 
 function contextLabel(context: QueueContext): string {
   switch (context.kind) {
@@ -23,6 +22,9 @@ export function QueuePanel() {
   const closeQueue = usePlayerStore((state) => state.closeQueue);
   const queue = usePlayerStore((state) => state.queue);
   const currentIndex = usePlayerStore((state) => state.currentIndex);
+  const isShuffling = usePlayerStore((state) => state.isShuffling);
+  const shuffleOrder = usePlayerStore((state) => state.shuffleOrder);
+  const shufflePosition = usePlayerStore((state) => state.shufflePosition);
   const currentTrack = usePlayerStore((state) => state.currentTrack);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const queueContext = usePlayerStore((state) => state.queueContext);
@@ -56,15 +58,28 @@ export function QueuePanel() {
   if (!isQueueOpen) return null;
 
   const nowPlaying = currentTrack ?? undefined;
-  const upNext = currentIndex >= 0 ? queue.slice(currentIndex + 1) : queue;
+  /* In play order: with shuffle on that is the rest of the shuffled walk, which
+     is what Next actually plays, not the queue's own order. */
+  const upNext = isShuffling && shuffleOrder.length > 0
+    ? shuffleOrder.slice(shufflePosition + 1).map((index) => queue[index]).filter(Boolean)
+    : currentIndex >= 0 ? queue.slice(currentIndex + 1) : queue;
+
+  const indexOfEntry = (id: string) => queue.findIndex((item) => item.queueEntryId === id);
+
+  /* Moving a row down re-inserts its element, which drops focus to the page,
+     where the next arrow press would change the volume instead. */
+  const refocusHandle = (id: string) => requestAnimationFrame(() => {
+    panelRef.current?.querySelector<HTMLElement>(`.queue-row-handle[data-entry-id="${id}"]`)?.focus();
+  });
 
   const move = (entry: QueueEntry, direction: -1 | 1) => {
-    const from = queue.findIndex((item) => item.queueEntryId === entry.queueEntryId);
-    const to = from + direction;
-    if (from === -1 || to <= currentIndex || to >= queue.length) return;
+    const position = upNext.indexOf(entry);
+    const target = upNext[position + direction];
+    if (position === -1 || !target) return;
 
-    reorderQueue(from, to);
-    setAnnouncement(`${entry.name} moved to position ${to - currentIndex} of ${queue.length - currentIndex - 1}`);
+    reorderQueue(indexOfEntry(entry.queueEntryId), indexOfEntry(target.queueEntryId));
+    refocusHandle(entry.queueEntryId);
+    setAnnouncement(`${entry.name} moved to position ${position + direction + 1} of ${upNext.length}`);
   };
 
   const handleDrop = (targetId: string) => {
@@ -74,12 +89,13 @@ export function QueuePanel() {
       return;
     }
 
-    const from = queue.findIndex((item) => item.queueEntryId === draggingId);
-    const to = queue.findIndex((item) => item.queueEntryId === targetId);
+    const from = indexOfEntry(draggingId);
+    const to = indexOfEntry(targetId);
+    const position = upNext.findIndex((item) => item.queueEntryId === targetId);
 
-    if (from !== -1 && to !== -1 && to > currentIndex) {
+    if (from !== -1 && to !== -1 && position !== -1) {
       reorderQueue(from, to);
-      setAnnouncement(`${queue[from].name} moved to position ${to - currentIndex} of ${queue.length - currentIndex - 1}`);
+      setAnnouncement(`${queue[from].name} moved to position ${position + 1} of ${upNext.length}`);
     }
 
     setDraggingId(null);
@@ -184,8 +200,14 @@ export function QueuePanel() {
                         <button
                           type="button"
                           className="queue-row-handle"
+                          data-entry-id={entry.queueEntryId}
                           draggable
-                          onDragStart={() => setDraggingId(entry.queueEntryId)}
+                          onDragStart={(event) => {
+                            // Firefox only starts a drag that carries data.
+                            event.dataTransfer.setData('text/plain', entry.queueEntryId);
+                            event.dataTransfer.effectAllowed = 'move';
+                            setDraggingId(entry.queueEntryId);
+                          }}
                           onDragEnd={() => {
                             setDraggingId(null);
                             setDropTargetId(null);
@@ -193,9 +215,11 @@ export function QueuePanel() {
                           onKeyDown={(event) => {
                             if (event.key === 'ArrowUp') {
                               event.preventDefault();
+                              event.stopPropagation();
                               move(entry, -1);
                             } else if (event.key === 'ArrowDown') {
                               event.preventDefault();
+                              event.stopPropagation();
                               move(entry, 1);
                             }
                           }}

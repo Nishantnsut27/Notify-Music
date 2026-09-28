@@ -65,6 +65,28 @@ export const otpLimiter = rateLimit({
   }
 });
 
+export const otpSendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Too many code requests. Please try again after 15 minutes.'
+  }
+});
+
+export const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Too many session refresh requests. Please try again later.'
+  }
+});
+
 export const forgotPasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,

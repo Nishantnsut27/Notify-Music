@@ -14,8 +14,11 @@ import type {
 import { STORAGE_KEYS, PLAYER_DEFAULTS } from '../config/constants';
 import { userApi } from '../services/userApi';
 import type { RawHistoryEntry } from '../services/userApi';
+import { ApiError } from '../services/apiClient';
+import { getLibraryOwner, setLibraryOwner } from '../services/tokenStorage';
 import { useAuthStore } from './authStore';
-import { getNextQueuePosition } from '../utils/queuePlayback';
+import { useToastStore } from './toastStore';
+import { getSkipQueuePosition, stepBackInShuffle } from '../utils/queuePlayback';
 
 /** One loose track: the only shape the suggestion engine is allowed to extend. */
 const SINGLE_CONTEXT: QueueContext = { kind: 'single' };
@@ -111,6 +114,31 @@ function buildShuffleOrder(length: number, startIndex: number): number[] {
   return order;
 }
 
+/**
+ * Logs one play of a track that has just started: recently played and listening
+ * history locally, and on the server for a signed-in listener. Every action that
+ * starts a new track — a click, Next, Previous, auto-advance, a lock-screen skip
+ * — goes through here exactly once; resuming, seeking and stream recovery do not.
+ */
+function recordPlay(
+  track: Track,
+  state: Pick<PlaylistStore, 'recentlyPlayed' | 'listeningHistory'>,
+): Pick<PlaylistStore, 'recentlyPlayed' | 'listeningHistory'> {
+  // Queue identity is tab-local; it must not reach saved lists or the server.
+  const played: Track & { queueEntryId?: string } = { ...track };
+  delete played.queueEntryId;
+
+  if (useAuthStore.getState().isAuthenticated) {
+    userApi.addRecentlyPlayed(played).catch(() => { });
+    userApi.recordHistory(played).catch(() => { });
+  }
+
+  return {
+    recentlyPlayed: [played, ...state.recentlyPlayed.filter(t => t.id !== played.id)].slice(0, 30),
+    listeningHistory: [{ ...played, playedAt: Date.now() }, ...state.listeningHistory].slice(0, 50),
+  };
+}
+
 interface PlayerStore extends PlayerState {
   /**
    * Starts playback.
@@ -136,6 +164,10 @@ interface PlayerStore extends PlayerState {
   playNext: (track: Track) => void;
   /** Removes one occurrence, addressed by its queue identity rather than by track id. */
   removeFromQueue: (queueEntryId: string) => void;
+  /**
+   * Moves the entry at queue index `fromIndex` into the play-order slot of the
+   * entry at `toIndex`: in the queue itself, or in the shuffled walk when shuffle is on.
+   */
   reorderQueue: (fromIndex: number, toIndex: number) => void;
   /**
    * Empties what is queued up next. The current track keeps playing — clearing a
@@ -177,6 +209,11 @@ interface PlaylistStore {
   autoplayEnabled: boolean;
 
   syncCloudUserData: () => Promise<void>;
+  /**
+   * Forgets the signed-in account's library — in memory and in storage — and
+   * orphans every server write or sync still in flight for it.
+   */
+  clearUserLibrary: () => void;
   createPlaylist: (name: string) => Playlist;
   deletePlaylist: (id: string) => void;
   renamePlaylist: (id: string, name: string) => void;
@@ -224,6 +261,11 @@ interface UIStore {
    * all other views. A genre's id is its category key, not a catalogue id.
    */
   detailEntity: { kind: 'album' | 'genre' | 'playlist'; id: string } | null;
+  /**
+   * Bumped by every navigation request, including one to the view already on screen,
+   * so "the listener chose somewhere" is observable even when the view doesn't change.
+   */
+  viewRequestId: number;
   /** Whether the queue drawer is on screen. Session-only, like the queue itself. */
   isQueueOpen: boolean;
 
@@ -306,15 +348,295 @@ const isValidTrack = (t: unknown): t is Track => {
  */
 const INITIAL_PLAYLISTS: Playlist[] = [];
 
+/**
+ * Bumped whenever the signed-in library is wiped (logout, session expiry, a
+ * different account signing in). Server work started under an older epoch
+ * belongs to that previous account and must never write into the store.
+ */
+let libraryEpoch = 0;
+let syncRun = 0;
+
+const isLocalPlaylistId = (id: string): boolean =>
+  id.startsWith('pl_') || id.startsWith('default-playlist-');
+
+/** Local ids of playlists whose server create has not resolved yet. */
+const pendingPlaylistCreates = new Set<string>();
+/** Server id → the local id it replaced, so both keep using one write chain. */
+const playlistChainKeys = new Map<string, string>();
+const writeChains = new Map<string, Promise<void>>();
+
+/**
+ * Runs the server writes for one key strictly in order, so a slow request can
+ * never land after the one that superseded it. Writes still queued when the
+ * library is wiped are dropped unstarted.
+ */
+function enqueueWrite(key: string, write: () => Promise<void>): void {
+  const epoch = libraryEpoch;
+  const previous = writeChains.get(key) ?? Promise.resolve();
+  const next = previous
+    .then(() => (epoch === libraryEpoch ? write() : undefined))
+    .catch((error) => console.error('Library write failed:', error));
+  writeChains.set(key, next);
+  void next.finally(() => {
+    if (writeChains.get(key) === next) writeChains.delete(key);
+  });
+}
+
+const playlistChain = (playlistId: string): string =>
+  `playlist:${playlistChainKeys.get(playlistId) ?? playlistId}`;
+
+const membershipWrites = new Map<string, { latest: number; confirmed: boolean }>();
+
+/**
+ * Follows one membership — a favorite, a song in a playlist — while writes for
+ * it are in flight. Only the newest write may roll back, and it restores what
+ * the server last acknowledged rather than what the screen showed before it,
+ * so a failed add followed by a failed remove cannot leave behind a song the
+ * server never had.
+ */
+function beginMembershipWrite(key: string, target: boolean) {
+  const entry = membershipWrites.get(key) ?? { latest: 0, confirmed: !target };
+  entry.latest += 1;
+  membershipWrites.set(key, entry);
+  const op = entry.latest;
+  return {
+    succeeded: () => { entry.confirmed = target; },
+    /** The state to restore, or null when a newer write owns the outcome. */
+    restoreTo: (): boolean | null => (op === entry.latest ? entry.confirmed : null),
+    settle: () => {
+      if (op === entry.latest && membershipWrites.get(key) === entry) membershipWrites.delete(key);
+    },
+  };
+}
+
+function reportLibraryFailure(title: string, error: unknown): void {
+  const isClientError = error instanceof ApiError
+    && error.status >= 400 && error.status < 500 && error.status !== 401 && error.status !== 403;
+  useToastStore.getState().addToast({
+    type: 'error',
+    title,
+    message: isClientError ? error.message : 'Your change was undone. Check your connection and try again.',
+  });
+}
+
+function updateFavorites(update: (favorites: Track[]) => Track[]): void {
+  const favorites = update(usePlayerStore.getState().favorites);
+  usePlayerStore.setState({ favorites });
+  saveToLocalStorage(STORAGE_KEYS.FAVORITES, favorites);
+}
+
+function updatePlaylists(update: (playlists: Playlist[]) => Playlist[]): void {
+  const playlists = update(usePlayerStore.getState().playlists);
+  usePlayerStore.setState({ playlists });
+  saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, playlists);
+}
+
+function insertAt<T>(items: T[], index: number, item: T): T[] {
+  const next = [...items];
+  next.splice(Math.max(0, Math.min(index, next.length)), 0, item);
+  return next;
+}
+
+function syncFavorite(track: Track, favorite: boolean, index: number): void {
+  const key = String(track.id);
+  const write = beginMembershipWrite(`favorite:${key}`, favorite);
+  const epoch = libraryEpoch;
+  enqueueWrite('favorites', async () => {
+    try {
+      if (favorite) await userApi.addFavorite(track);
+      else await userApi.removeFavorite(key);
+      write.succeeded();
+    } catch (error) {
+      const restore = write.restoreTo();
+      if (epoch !== libraryEpoch || restore === null) return;
+      updateFavorites((favorites) => {
+        const present = favorites.some((t) => String(t.id) === key);
+        if (restore && !present) return insertAt(favorites, index, track);
+        if (!restore && present) return favorites.filter((t) => String(t.id) !== key);
+        return favorites;
+      });
+      reportLibraryFailure(
+        favorite ? `Couldn't add "${track.name}" to favorites` : `Couldn't remove "${track.name}" from favorites`,
+        error,
+      );
+    } finally {
+      write.settle();
+    }
+  });
+}
+
+function syncPlaylistTrack(playlistId: string, track: PlaylistTrack, inPlaylist: boolean, index: number): void {
+  const key = String(track.id);
+  const write = beginMembershipWrite(`${playlistChain(playlistId)}:${key}`, inPlaylist);
+  const epoch = libraryEpoch;
+  enqueueWrite(playlistChain(playlistId), async () => {
+    try {
+      if (inPlaylist) await userApi.addTrackToPlaylist(playlistId, track);
+      else await userApi.removeTrackFromPlaylist(playlistId, key);
+      write.succeeded();
+    } catch (error) {
+      const restore = write.restoreTo();
+      if (epoch !== libraryEpoch || restore === null) return;
+      const playlist = usePlayerStore.getState().playlists.find((p) => p.id === playlistId);
+      if (!playlist) return;
+      const present = playlist.tracks.some((t) => String(t.id) === key);
+      if (restore !== present) {
+        const tracks = restore
+          ? insertAt(playlist.tracks, index, track)
+          : playlist.tracks.filter((t) => String(t.id) !== key);
+        updatePlaylists((playlists) => playlists.map((p) => (p.id === playlistId ? { ...p, tracks } : p)));
+      }
+      reportLibraryFailure(
+        inPlaylist ? `Couldn't add "${track.name}" to "${playlist.name}"` : `Couldn't remove "${track.name}" from "${playlist.name}"`,
+        error,
+      );
+    } finally {
+      write.settle();
+    }
+  });
+}
+
+function syncPlaylistRename(playlistId: string, name: string, previousName: string): void {
+  const epoch = libraryEpoch;
+  enqueueWrite(playlistChain(playlistId), async () => {
+    try {
+      await userApi.updatePlaylist(playlistId, { name });
+    } catch (error) {
+      if (epoch !== libraryEpoch) return;
+      updatePlaylists((playlists) => playlists.map((p) =>
+        p.id === playlistId && p.name === name ? { ...p, name: previousName } : p
+      ));
+      reportLibraryFailure(`Couldn't rename "${previousName}"`, error);
+    }
+  });
+}
+
+function syncPlaylistDelete(playlist: Playlist, index: number): void {
+  const epoch = libraryEpoch;
+  enqueueWrite(playlistChain(playlist.id), async () => {
+    try {
+      await userApi.deletePlaylist(playlist.id);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return;
+      if (epoch !== libraryEpoch) return;
+      updatePlaylists((playlists) =>
+        playlists.some((p) => p.id === playlist.id) ? playlists : insertAt(playlists, index, playlist)
+      );
+      reportLibraryFailure(`Couldn't delete "${playlist.name}"`, error);
+    }
+  });
+}
+
+function syncPlaylistOrder(playlistId: string, tracks: PlaylistTrack[], previous: PlaylistTrack[]): void {
+  const epoch = libraryEpoch;
+  const order = (list: Track[]) => list.map((t) => String(t.id)).join(',');
+  enqueueWrite(playlistChain(playlistId), async () => {
+    try {
+      await userApi.reorderPlaylistTracks(playlistId, tracks);
+    } catch (error) {
+      if (epoch !== libraryEpoch) return;
+      const playlist = usePlayerStore.getState().playlists.find((p) => p.id === playlistId);
+      if (!playlist) return;
+      if (order(playlist.tracks) === order(tracks)) {
+        updatePlaylists((playlists) => playlists.map((p) => (p.id === playlistId ? { ...p, tracks: previous } : p)));
+      }
+      reportLibraryFailure(`Couldn't reorder "${playlist.name}"`, error);
+    }
+  });
+}
+
+/**
+ * Creates the server copy of a playlist made locally under a temporary id.
+ *
+ * Until the create resolves the local playlist is the only record: songs,
+ * renames, reorders and deletion apply to it alone. When the server id arrives
+ * the local state is replayed once, and every later change goes to the server
+ * on the same write chain, so none of them can overtake the replay.
+ */
+function syncNewPlaylist(localId: string, name: string): void {
+  const epoch = libraryEpoch;
+  pendingPlaylistCreates.add(localId);
+  enqueueWrite(playlistChain(localId), async () => {
+    let serverId: string;
+    try {
+      const remote = await userApi.createPlaylist(name);
+      if (!remote?.id) throw new Error('The server did not return a playlist id.');
+      serverId = remote.id;
+    } catch (error) {
+      pendingPlaylistCreates.delete(localId);
+      if (epoch !== libraryEpoch) return;
+      const lost = usePlayerStore.getState().playlists.find((p) => p.id === localId);
+      if (!lost) return;
+      updatePlaylists((playlists) => playlists.filter((p) => p.id !== localId));
+      reportLibraryFailure(`Couldn't create "${lost.name}"`, error);
+      return;
+    }
+    pendingPlaylistCreates.delete(localId);
+    if (epoch !== libraryEpoch) return;
+
+    const local = usePlayerStore.getState().playlists.find((p) => p.id === localId);
+    if (!local) {
+      await userApi.deletePlaylist(serverId).catch(() => { });
+      return;
+    }
+
+    playlistChainKeys.set(serverId, localId);
+    usePlayerStore.setState((state) => ({
+      playlists: state.playlists.map((p) => (p.id === localId ? { ...p, id: serverId } : p)),
+      detailEntity: state.detailEntity?.kind === 'playlist' && state.detailEntity.id === localId
+        ? { kind: 'playlist', id: serverId }
+        : state.detailEntity,
+      queueContext: state.queueContext.kind === 'playlist' && state.queueContext.id === localId
+        ? { ...state.queueContext, id: serverId }
+        : state.queueContext,
+    }));
+    saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, usePlayerStore.getState().playlists);
+
+    if (local.name !== name) {
+      try {
+        await userApi.updatePlaylist(serverId, { name: local.name });
+      } catch (error) {
+        if (epoch !== libraryEpoch) return;
+        updatePlaylists((playlists) => playlists.map((p) =>
+          p.id === serverId && p.name === local.name ? { ...p, name } : p
+        ));
+        reportLibraryFailure(`Couldn't rename "${name}"`, error);
+      }
+    }
+
+    const failed = new Set<string>();
+    let lastError: unknown;
+    for (const track of local.tracks) {
+      if (epoch !== libraryEpoch) return;
+      try {
+        await userApi.addTrackToPlaylist(serverId, track);
+      } catch (error) {
+        failed.add(String(track.id));
+        lastError = error;
+      }
+    }
+    if (failed.size === 0 || epoch !== libraryEpoch) return;
+    updatePlaylists((playlists) => playlists.map((p) =>
+      p.id === serverId ? { ...p, tracks: p.tracks.filter((t) => !failed.has(String(t.id))) } : p
+    ));
+    reportLibraryFailure(
+      failed.size === 1 ? `Couldn't add a song to "${local.name}"` : `Couldn't add ${failed.size} songs to "${local.name}"`,
+      lastError,
+    );
+  });
+}
+
+const savedVolume: number = loadFromLocalStorage(STORAGE_KEYS.VOLUME, PLAYER_DEFAULTS.DEFAULT_VOLUME);
+
 export const usePlayerStore = create<AppStore>()(
   subscribeWithSelector((set, get) => ({
     currentTrack: null,
     isPlaying: false,
     currentTime: 0,
     duration: 0,
-    volume: loadFromLocalStorage(STORAGE_KEYS.VOLUME, PLAYER_DEFAULTS.DEFAULT_VOLUME),
-    isMuted: false,
-    volumeBeforeMute: PLAYER_DEFAULTS.DEFAULT_VOLUME,
+    volume: savedVolume,
+    isMuted: savedVolume === 0,
+    volumeBeforeMute: savedVolume > 0 ? savedVolume : PLAYER_DEFAULTS.DEFAULT_VOLUME,
     queue: [],
     currentIndex: -1,
     playbackHistory: [],
@@ -347,6 +669,7 @@ export const usePlayerStore = create<AppStore>()(
     isSidebarOpen: false,
     currentView: 'home',
     detailEntity: null,
+    viewRequestId: 0,
     isQueueOpen: false,
     theme: loadFromLocalStorage(STORAGE_KEYS.THEME, 'dark'),
 
@@ -355,17 +678,19 @@ export const usePlayerStore = create<AppStore>()(
 
       /* A list is only a list when one was handed over. A search hit or a card
          on Home arrives alone, stays alone, and gets topped up by the radio. */
-      const sourceTracks = queue && queue.length > 0 ? queue : [track];
+      const listed = queue && queue.length > 0 ? queue : [track];
       const requested = typeof index === 'number' ? index : -1;
-      const newIndex = requested >= 0
-        && requested < sourceTracks.length
-        && String(sourceTracks[requested]?.id) === String(track.id)
+      const listedIndex = requested >= 0
+        && requested < listed.length
+        && String(listed[requested]?.id) === String(track.id)
         ? requested
-        : Math.max(0, sourceTracks.findIndex(t => String(t.id) === String(track.id)));
+        : listed.findIndex(t => String(t.id) === String(track.id));
+      /* Not in the list it came with: play it alone rather than starting the
+         list somewhere the listener did not click. */
+      const sourceTracks = listedIndex === -1 ? [track] : listed;
+      const newIndex = Math.max(0, listedIndex);
 
       const newQueue = toQueueEntries(sourceTracks);
-      const updatedRecentlyPlayed = [track, ...state.recentlyPlayed.filter(t => t.id !== track.id)].slice(0, 30);
-      const historyEntry: HistoryEntry = { ...track, playedAt: Date.now() };
 
       const shuffleOrder = state.isShuffling ? buildShuffleOrder(newQueue.length, newIndex) : [];
       const shufflePosition = 0;
@@ -375,22 +700,16 @@ export const usePlayerStore = create<AppStore>()(
         isPlaying: true,
         queue: newQueue,
         currentIndex: newIndex,
-        queueContext: context,
+        queueContext: listedIndex === -1 ? SINGLE_CONTEXT : context,
         autoQueueSuppressed: false,
         playbackHistory: [],
         sessionId: state.sessionId + 1,
         currentTime: 0,
         duration: track.duration || 0,
-        recentlyPlayed: updatedRecentlyPlayed,
-        listeningHistory: [historyEntry, ...state.listeningHistory].slice(0, 50),
+        ...recordPlay(track, state),
         shuffleOrder,
         shufflePosition,
       });
-
-      if (useAuthStore.getState().isAuthenticated) {
-        userApi.addRecentlyPlayed(track).catch(() => { });
-        userApi.recordHistory(track).catch(() => { });
-      }
     },
 
     pauseTrack: () => set({ isPlaying: false }),
@@ -429,11 +748,14 @@ export const usePlayerStore = create<AppStore>()(
 
     nextTrack: () => {
       const state = get();
-      if (!state.currentTrack || state.queue.length === 0) return;
+      if (!state.currentTrack) return;
 
-      const next = getNextQueuePosition(state);
+      /* Repeat-one is not consulted here: the `ended` handler replays in that
+         mode itself, so every call that reaches this is a skip or a plain advance. */
+      const next = getSkipQueuePosition(state);
       if (!next) {
-        set({ isPlaying: false });
+        // Also a current song that was removed from an otherwise empty queue.
+        if (state.queue.length > 0 || state.repeatMode === 'none') set({ isPlaying: false });
         return;
       }
       const nextIndex = next.index;
@@ -451,7 +773,8 @@ export const usePlayerStore = create<AppStore>()(
         playbackHistory: history,
         currentTime: 0,
         duration: nextTrack.duration || 0,
-        isPlaying: true
+        isPlaying: true,
+        ...recordPlay(nextTrack, state),
       });
     },
 
@@ -467,6 +790,9 @@ export const usePlayerStore = create<AppStore>()(
          actually played. */
       const prevIndex = state.queue.findIndex(t => t.queueEntryId === prevTrack.queueEntryId);
       const newHistory = state.playbackHistory.slice(0, -1);
+      const shuffle = state.isShuffling && state.shuffleOrder.length > 0 && prevIndex >= 0
+        ? stepBackInShuffle(state.shuffleOrder, state.shufflePosition, prevIndex)
+        : { shuffleOrder: state.shuffleOrder, shufflePosition: state.shufflePosition };
 
       set({
         currentTrack: prevTrack,
@@ -475,6 +801,8 @@ export const usePlayerStore = create<AppStore>()(
         currentTime: 0,
         duration: prevTrack.duration || 0,
         isPlaying: true,
+        ...shuffle,
+        ...recordPlay(prevTrack, state),
       });
     },
 
@@ -488,13 +816,16 @@ export const usePlayerStore = create<AppStore>()(
       saveToLocalStorage(STORAGE_KEYS.VOLUME, clamped);
     },
 
-    toggleMute: () => set((state) => {
+    toggleMute: () => {
+      const state = get();
       if (state.isMuted) {
         const restored = state.volumeBeforeMute > 0 ? state.volumeBeforeMute : PLAYER_DEFAULTS.DEFAULT_VOLUME;
-        return { isMuted: false, volume: restored };
+        set({ isMuted: false, volume: restored });
+        saveToLocalStorage(STORAGE_KEYS.VOLUME, restored);
+        return;
       }
-      return { isMuted: true, volumeBeforeMute: state.volume };
-    }),
+      set({ isMuted: true, volumeBeforeMute: state.volume });
+    },
     seekTo: (time: number) => set({ currentTime: time }),
 
     toggleShuffle: () => set((state) => {
@@ -586,6 +917,19 @@ export const usePlayerStore = create<AppStore>()(
       if (fromIndex < 0 || fromIndex >= state.queue.length) return;
       if (toIndex < 0 || toIndex >= state.queue.length) return;
 
+      /* Shuffle plays in shuffleOrder, not queue order, so that walk is what
+         moves; the queue stays put for when shuffle is turned off. */
+      if (state.isShuffling && state.shuffleOrder.length > 0) {
+        const fromPosition = state.shuffleOrder.indexOf(fromIndex);
+        const toPosition = state.shuffleOrder.indexOf(toIndex);
+        if (fromPosition === -1 || toPosition === -1) return;
+        const shuffleOrder = [...state.shuffleOrder];
+        shuffleOrder.splice(fromPosition, 1);
+        shuffleOrder.splice(toPosition, 0, fromIndex);
+        set({ shuffleOrder });
+        return;
+      }
+
       const newQueue = [...state.queue];
       const [moved] = newQueue.splice(fromIndex, 1);
       newQueue.splice(toIndex, 0, moved);
@@ -650,7 +994,20 @@ export const usePlayerStore = create<AppStore>()(
     }),
 
     syncCloudUserData: async () => {
-      if (!useAuthStore.getState().isAuthenticated) return;
+      const { isAuthenticated, user } = useAuthStore.getState();
+      if (!isAuthenticated || !user) return;
+
+      /* A library persisted for another account — or by a build that did not
+         record owners — must be neither shown nor kept as this one's fallback. */
+      if (getLibraryOwner() !== user.id) {
+        get().clearUserLibrary();
+        setLibraryOwner(user.id);
+      }
+      const run = ++syncRun;
+      const epoch = libraryEpoch;
+      const isStale = () =>
+        run !== syncRun || epoch !== libraryEpoch || useAuthStore.getState().user?.id !== user.id;
+
       try {
         const [cloudFavorites, cloudPlaylists, cloudRecentlyPlayed, cloudHistory] = await Promise.all([
           userApi.getFavorites().catch(() => null),
@@ -658,13 +1015,18 @@ export const usePlayerStore = create<AppStore>()(
           userApi.getRecentlyPlayed().catch(() => null),
           userApi.getHistory().catch(() => null),
         ]);
+        if (isStale()) return;
         if (cloudFavorites !== null) {
           set({ favorites: cloudFavorites });
           saveToLocalStorage(STORAGE_KEYS.FAVORITES, cloudFavorites);
         }
         if (cloudPlaylists !== null) {
-          set({ playlists: cloudPlaylists });
-          saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, cloudPlaylists);
+          /* A playlist whose create is still in flight is not on the server yet;
+             dropping it here would make its create delete it on arrival. */
+          const unsynced = get().playlists.filter(p => pendingPlaylistCreates.has(p.id));
+          const playlists = [...cloudPlaylists, ...unsynced];
+          set({ playlists });
+          saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, playlists);
         }
         if (cloudRecentlyPlayed !== null) {
           set({ recentlyPlayed: cloudRecentlyPlayed });
@@ -675,6 +1037,27 @@ export const usePlayerStore = create<AppStore>()(
       } catch (err) {
         console.error('Failed to sync cloud user data:', err);
       }
+    },
+
+    clearUserLibrary: () => {
+      libraryEpoch += 1;
+      pendingPlaylistCreates.clear();
+      playlistChainKeys.clear();
+      membershipWrites.clear();
+      writeChains.clear();
+      set({ favorites: [], playlists: [], recentlyPlayed: [], listeningHistory: [] });
+      try {
+        localStorage.removeItem(STORAGE_KEYS.PLAYLISTS);
+        localStorage.removeItem(STORAGE_KEYS.FAVORITES);
+        // Left behind by builds that parked songs for unsynced playlists in storage.
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key?.startsWith('pending_tracks_')) localStorage.removeItem(key);
+        }
+      } catch {
+        /* Storage can be blocked; the in-memory library above is already cleared. */
+      }
+      setLibraryOwner(null);
     },
 
     createPlaylist: (name: string, initialTracks?: Track[]) => {
@@ -693,30 +1076,7 @@ export const usePlayerStore = create<AppStore>()(
       saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
 
       if (useAuthStore.getState().isAuthenticated) {
-        userApi.createPlaylist(uniqueName).then((remote) => {
-          if (remote && remote.id) {
-            const currentState = get();
-            const currentPlaylist = currentState.playlists.find(p => p.id === tempId);
-            const updated = currentState.playlists.map((p) => (p.id === tempId ? { ...p, id: remote.id } : p));
-            set({ playlists: updated });
-            saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, updated);
-
-            const pendingKey = `pending_tracks_${tempId}`;
-            const pendingTracks = JSON.parse(localStorage.getItem(pendingKey) || '[]');
-            if (pendingTracks.length > 0) {
-              pendingTracks.forEach((track: Track) => {
-                userApi.addTrackToPlaylist(remote.id, track).catch(() => { });
-              });
-              localStorage.removeItem(pendingKey);
-            }
-
-            if (currentPlaylist && currentPlaylist.tracks.length > 0) {
-              currentPlaylist.tracks.forEach(track => {
-                userApi.addTrackToPlaylist(remote.id, track).catch(() => { });
-              });
-            }
-          }
-        }).catch(() => { });
+        syncNewPlaylist(tempId, uniqueName);
       }
 
       return newPlaylist;
@@ -724,17 +1084,22 @@ export const usePlayerStore = create<AppStore>()(
 
     deletePlaylist: (id: string) => {
       const state = get();
+      const index = state.playlists.findIndex(p => p.id === id);
+      if (index === -1) return;
+      const deleted = state.playlists[index];
       const newPlaylists = state.playlists.filter(p => p.id !== id);
       set({ playlists: newPlaylists });
       saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
 
-      if (useAuthStore.getState().isAuthenticated) {
-        userApi.deletePlaylist(id).catch(() => { });
+      // A local id is deleted by its own pending create once the server id arrives.
+      if (useAuthStore.getState().isAuthenticated && !isLocalPlaylistId(id)) {
+        syncPlaylistDelete(deleted, index);
       }
     },
 
     renamePlaylist: (id: string, name: string) => {
       const state = get();
+      const previous = state.playlists.find(p => p.id === id);
       const uniqueName = getUniquePlaylistName(name, state.playlists, id);
       const newPlaylists = state.playlists.map(p =>
         p.id === id ? { ...p, name: uniqueName, updatedAt: Date.now() } : p
@@ -742,8 +1107,13 @@ export const usePlayerStore = create<AppStore>()(
       set({ playlists: newPlaylists });
       saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
 
-      if (useAuthStore.getState().isAuthenticated) {
-        userApi.updatePlaylist(id, { name: uniqueName }).catch(() => { });
+      if (
+        useAuthStore.getState().isAuthenticated
+        && previous
+        && previous.name !== uniqueName
+        && !isLocalPlaylistId(id)
+      ) {
+        syncPlaylistRename(id, uniqueName, previous.name);
       }
     },
 
@@ -771,21 +1141,16 @@ export const usePlayerStore = create<AppStore>()(
       set({ playlists: newPlaylists });
       saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
 
-      if (useAuthStore.getState().isAuthenticated) {
-        const isTempId = playlistId.startsWith('pl_') || playlistId.startsWith('default-playlist-');
-        if (isTempId) {
-          const pendingKey = `pending_tracks_${playlistId}`;
-          const existing = JSON.parse(localStorage.getItem(pendingKey) || '[]');
-          existing.push({ ...track, addedAt: Date.now() });
-          localStorage.setItem(pendingKey, JSON.stringify(existing));
-        } else {
-          userApi.addTrackToPlaylist(playlistId, track).catch(() => { });
-        }
+      // A local id's songs are replayed by its pending create.
+      if (useAuthStore.getState().isAuthenticated && targetPlaylist && !isLocalPlaylistId(playlistId)) {
+        syncPlaylistTrack(playlistId, playlistTrack, true, targetPlaylist.tracks.length);
       }
     },
 
     removeTrackFromPlaylist: (playlistId: string, trackId: string) => {
       const state = get();
+      const playlist = state.playlists.find(p => p.id === playlistId);
+      const index = playlist ? playlist.tracks.findIndex(t => t.id === trackId) : -1;
       const newPlaylists = state.playlists.map(p =>
         p.id === playlistId
           ? {
@@ -798,22 +1163,8 @@ export const usePlayerStore = create<AppStore>()(
       set({ playlists: newPlaylists });
       saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
 
-      if (useAuthStore.getState().isAuthenticated) {
-        const isTempId = playlistId.startsWith('pl_') || playlistId.startsWith('default-playlist-');
-        if (isTempId) {
-          const pendingKey = `pending_tracks_${playlistId}`;
-          const pendingTracks: Track[] = JSON.parse(localStorage.getItem(pendingKey) || '[]');
-          const remainingPendingTracks = pendingTracks.filter(track => track.id !== trackId);
-
-          if (remainingPendingTracks.length > 0) {
-            localStorage.setItem(pendingKey, JSON.stringify(remainingPendingTracks));
-          } else {
-            localStorage.removeItem(pendingKey);
-          }
-          return;
-        }
-
-        userApi.removeTrackFromPlaylist(playlistId, trackId).catch(() => { });
+      if (useAuthStore.getState().isAuthenticated && playlist && index !== -1 && !isLocalPlaylistId(playlistId)) {
+        syncPlaylistTrack(playlistId, playlist.tracks[index], false, index);
       }
     },
 
@@ -835,47 +1186,58 @@ export const usePlayerStore = create<AppStore>()(
       set({ playlists: newPlaylists });
       saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
 
-      /* Playlists created offline carry a local id the server has never seen, so
-         there is nothing to reorder there yet. The pending-tracks file already
-         holds them in order and is replayed on the next successful sync. */
-      const isTempId = playlistId.startsWith('pl_') || playlistId.startsWith('default-playlist-');
-      if (useAuthStore.getState().isAuthenticated && !isTempId) {
-        userApi.reorderPlaylistTracks(playlistId, tracks).catch(() => { });
+      /* A playlist still under a local id has no server copy to reorder; its
+         pending create replays the songs in whatever order they have by then. */
+      if (useAuthStore.getState().isAuthenticated && !isLocalPlaylistId(playlistId)) {
+        syncPlaylistOrder(playlistId, tracks, playlist.tracks);
       }
     },
 
     addToFavorites: (track: Track) => {
       const state = get();
-      if (!state.favorites.find(t => t.id === track.id)) {
+      if (!state.favorites.some(t => String(t.id) === String(track.id))) {
         const newFavorites = [...state.favorites, track];
         set({ favorites: newFavorites });
         saveToLocalStorage(STORAGE_KEYS.FAVORITES, newFavorites);
 
         if (useAuthStore.getState().isAuthenticated) {
-          userApi.addFavorite(track).catch(() => { });
+          syncFavorite(track, true, state.favorites.length);
         }
       }
     },
 
     removeFromFavorites: (trackId: string) => {
       const state = get();
-      const newFavorites = state.favorites.filter(t => t.id !== trackId);
+      const index = state.favorites.findIndex(t => String(t.id) === String(trackId));
+      if (index === -1) return;
+      const newFavorites = state.favorites.filter((_, i) => i !== index);
       set({ favorites: newFavorites });
       saveToLocalStorage(STORAGE_KEYS.FAVORITES, newFavorites);
 
       if (useAuthStore.getState().isAuthenticated) {
-        userApi.removeFavorite(trackId).catch(() => { });
+        syncFavorite(state.favorites[index], false, index);
       }
     },
 
     clearFavorites: () => {
+      const previous = get().favorites;
       set({ favorites: [] });
       saveToLocalStorage(STORAGE_KEYS.FAVORITES, []);
-      if (useAuthStore.getState().isAuthenticated) {
-        import('../services/userApi').then(({ userApi }) => {
-          userApi.clearFavorites().catch(() => { });
-        });
-      }
+      if (!useAuthStore.getState().isAuthenticated) return;
+
+      const epoch = libraryEpoch;
+      enqueueWrite('favorites', async () => {
+        try {
+          await userApi.clearFavorites();
+        } catch (error) {
+          if (epoch !== libraryEpoch) return;
+          updateFavorites((current) => [
+            ...previous,
+            ...current.filter(t => !previous.some(p => String(p.id) === String(t.id))),
+          ]);
+          reportLibraryFailure("Couldn't clear your favorites", error);
+        }
+      });
     },
 
     exportPlaylist: (id: string) => {
@@ -916,27 +1278,16 @@ export const usePlayerStore = create<AppStore>()(
       saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, newPlaylists);
 
       if (useAuthStore.getState().isAuthenticated) {
-        userApi.createPlaylist(uniqueName).then((remote) => {
-          if (remote && remote.id) {
-            const updated = get().playlists.map((p) =>
-              p.id === importedPlaylist.id ? { ...p, id: remote.id } : p
-            );
-            set({ playlists: updated });
-            saveToLocalStorage(STORAGE_KEYS.PLAYLISTS, updated);
-            validTracks.forEach(track => {
-              userApi.addTrackToPlaylist(remote.id, track).catch(() => { });
-            });
-          }
-        }).catch(() => { });
+        syncNewPlaylist(importedPlaylist.id, uniqueName);
       }
     },
 
     toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
     closeSidebar: () => set({ isSidebarOpen: false }),
-    setCurrentView: (view) => set({ currentView: view, detailEntity: null }),
-    openAlbum: (id: string) => set({ currentView: 'album', detailEntity: { kind: 'album', id } }),
-    openGenre: (id: string) => set({ currentView: 'genre', detailEntity: { kind: 'genre', id } }),
-    openPlaylist: (id: string) => set({ currentView: 'playlist', detailEntity: { kind: 'playlist', id } }),
+    setCurrentView: (view) => set((state) => ({ currentView: view, detailEntity: null, viewRequestId: state.viewRequestId + 1 })),
+    openAlbum: (id: string) => set((state) => ({ currentView: 'album', detailEntity: { kind: 'album', id }, viewRequestId: state.viewRequestId + 1 })),
+    openGenre: (id: string) => set((state) => ({ currentView: 'genre', detailEntity: { kind: 'genre', id }, viewRequestId: state.viewRequestId + 1 })),
+    openPlaylist: (id: string) => set((state) => ({ currentView: 'playlist', detailEntity: { kind: 'playlist', id }, viewRequestId: state.viewRequestId + 1 })),
 
     toggleQueue: () => set((state) => ({ isQueueOpen: !state.isQueueOpen })),
     closeQueue: () => set({ isQueueOpen: false }),

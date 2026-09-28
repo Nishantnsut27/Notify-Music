@@ -37,23 +37,28 @@ const isEmpty = (related: RelatedMusic | null): boolean =>
     related.moreFromAlbum.length === 0);
 
 export function useDiscoverTrail(): DiscoverTrailState {
-  const [seed, setSeed] = useState<Track | null>(null);
+  /* `attempt` makes a retry of the same seed a new request object, so picking a
+     song again after its lookup failed runs the lookup again. */
+  const [request, setRequest] = useState<{ seed: Track; attempt: number } | null>(null);
   const [related, setRelated] = useState<RelatedMusic | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isExhausted, setIsExhausted] = useState(false);
+  const seed = request?.seed ?? null;
 
   /* Monotonic, so a slow lookup for an abandoned seed can never overwrite the
      one the listener is actually looking at. */
   const sequenceRef = useRef(0);
+  const lastFailedRef = useRef(false);
 
   useEffect(() => {
-    if (!seed) return;
+    if (!request) return;
 
     const requestId = ++sequenceRef.current;
+    lastFailedRef.current = false;
     setIsLoading(true);
     setIsExhausted(false);
 
-    MusicAPI.getRelatedMusic(seed)
+    MusicAPI.getRelatedMusic(request.seed)
       .then((result) => {
         if (requestId !== sequenceRef.current) return;
         setRelated(result);
@@ -63,6 +68,7 @@ export function useDiscoverTrail(): DiscoverTrailState {
         /* A failed lookup is reported as a dead end, not as fabricated
            neighbours and not as a crash: the rest of Discover stays usable. */
         if (requestId !== sequenceRef.current) return;
+        lastFailedRef.current = true;
         setRelated(null);
         setIsExhausted(true);
       })
@@ -70,10 +76,15 @@ export function useDiscoverTrail(): DiscoverTrailState {
         if (requestId !== sequenceRef.current) return;
         setIsLoading(false);
       });
-  }, [seed]);
+  }, [request]);
 
   const explore = useCallback((track: Track) => {
-    setSeed((current) => (current?.id === track.id ? current : track));
+    const retry = lastFailedRef.current;
+    setRequest((current) =>
+      current && current.seed.id === track.id && !retry
+        ? current
+        : { seed: track, attempt: (current?.attempt ?? 0) + 1 },
+    );
   }, []);
 
   return { seed, related, isLoading, isExhausted, explore };

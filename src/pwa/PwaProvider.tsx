@@ -34,11 +34,17 @@ export function PwaProvider() {
       });
     };
 
+    /* clientsClaim hands a first visit its very first controller, which is an
+       install rather than an update. Only a page that was already controlled is
+       now running older code than its service worker. */
+    const hadController = Boolean(navigator.serviceWorker?.controller);
     const handleControllerChange = () => {
-      toast('Updated', {
-        description: 'App updated to the latest version.',
+      if (!hadController) return;
+      toast('Update available', {
+        description: 'A new version of Soundrift is ready. Reload to use it.',
         icon: <RefreshCw size={18} />,
-        duration: 3000,
+        duration: 10000,
+        action: { label: 'Reload', onClick: () => window.location.reload() },
       });
     };
 

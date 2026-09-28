@@ -19,7 +19,8 @@ function isRetryableStatus(status?: number): boolean {
 
 export function isTransientRequestError(error: unknown): boolean {
   if (!axios.isAxiosError(error)) {
-    return error instanceof Error;
+    // Normalizer/programming errors fail the same way on every attempt.
+    return false;
   }
 
   const status = error.response?.status;

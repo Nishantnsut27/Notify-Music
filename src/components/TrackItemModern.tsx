@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { Track } from '../types/types';
 import { formatDuration, formatArtistNames } from '../utils/formatters';
+import { FALLBACK_ART } from '../utils/artwork';
 import { AudioVisualizer } from './AudioVisualizer';
 import { TrackContextMenu } from './TrackContextMenu';
 import { useAuthStore } from '../store/authStore';
@@ -65,8 +66,12 @@ export const TrackItemModern = memo(function TrackItemModern({
       className={`track-item-modern ${isCurrent ? 'active' : ''} ${blurLevel > 0 ? 'blurred' : ''} ${isRemoving ? 'removing' : ''} ${reorder?.isDragging ? 'is-dragging' : ''} ${reorder?.isDropTarget ? 'is-drop-target' : ''}`}
       onClick={() => onPlay(track, index)}
       onKeyDown={(e) => {
+        // Keys from the row's own buttons bubble here; those buttons handle them.
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
+          // The global Space shortcut would otherwise toggle the new track straight back to paused.
+          e.stopPropagation();
           onPlay(track, index);
         }
       }}
@@ -91,7 +96,12 @@ export const TrackItemModern = memo(function TrackItemModern({
           className="track-reorder-handle"
           draggable
           onClick={(e) => e.stopPropagation()}
-          onDragStart={() => reorder.onDragStart(index)}
+          onDragStart={(e) => {
+            // Firefox only starts a drag that carries data.
+            e.dataTransfer.setData('text/plain', String(track.id));
+            e.dataTransfer.effectAllowed = 'move';
+            reorder.onDragStart(index);
+          }}
           onDragEnd={reorder.onDragEnd}
           onKeyDown={(e) => {
             e.stopPropagation();
@@ -122,7 +132,7 @@ export const TrackItemModern = memo(function TrackItemModern({
           alt={`${track.name} by ${track.artist_name}`}
           loading="lazy"
           onError={(e) => {
-            e.currentTarget.src = '/Favicon.png';
+            e.currentTarget.src = FALLBACK_ART;
             e.currentTarget.onerror = null;
           }}
         />

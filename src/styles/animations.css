@@ -31,88 +31,6 @@
   50% { height: 16px; }
 }
 
-@keyframes volumePulse {
-  0% {
-    transform: translate(-50%, -50%) scale(0);
-    opacity: 1;
-  }
-  50% {
-    transform: translate(-50%, -50%) scale(1.5);
-    opacity: 0.8;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(2.5);
-    opacity: 0;
-  }
-}
-
-
-
-@keyframes slideInUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes search-pulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.1);
-    opacity: 0.8;
-  }
-}
-
-@keyframes fadeIn {
-  0% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-
-@keyframes fadeOut {
-  0% {
-    opacity: 1;
-    transform: translateX(0);
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-}
-
-@keyframes slideOut {
-  0% {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-    max-height: 100px;
-  }
-  50% {
-    opacity: 0.5;
-    transform: translateX(-10px) scale(0.98);
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(-30px) scale(0.95);
-    max-height: 0;
-    padding: 0;
-    margin: 0;
-  }
-}
-
-.loading-spinner {
-  animation: spin 1s linear infinite;
-}
-
 .sidebar-nav-item::before {
   content: '';
   position: absolute;
@@ -165,66 +83,10 @@
   height: 100px;
 }
 
-.modern-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-  transition: left 0.6s var(--smooth);
-}
-
-.modern-button:hover::before {
-  left: 100%;
-}
-
-.empty-icon::before {
-  content: '';
-  position: absolute;
-  top: -4px;
-  left: -4px;
-  right: -4px;
-  bottom: -4px;
-  background: conic-gradient(from 0deg, transparent, rgba(29, 185, 84, 0.3), transparent);
-  border-radius: 50%;
-  animation: spin 3s linear infinite;
-  z-index: -1;
-}
-
-.greenline {
-  animation: infinite playing 1s ease-in-out;
-}
-
 .wave {
   animation: wave 1.2s ease-in-out infinite;
 }
 
-.volume-pulse {
-  animation: volumePulse 1s ease-out;
-}
-
-.search-icon.searching {
-  animation: search-pulse 1.5s ease-in-out infinite;
-}
-
-.loading-shimmer {
-  animation: shimmer 1.5s ease-in-out infinite;
-}
-
 .modal {
   animation: modalSlideIn 0.3s ease-out;
-}
-
-.fade-in {
-  animation: fadeIn 0.3s ease-in-out;
-}
-
-.fade-out {
-  animation: fadeOut 0.3s ease-in-out;
-}
-
-.slide-out {
-  animation: slideOut 0.4s ease-in-out forwards;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { MusicAPI } from '../services/musicApi';
 import { usePlayerStore } from '../store/playerStore';
 import { useToastStore } from '../store/toastStore';
@@ -6,6 +6,24 @@ import type { Track } from '../types/types';
 
 /** The two things a card can play in one click. Not a listener's own playlist. */
 export type CollectionKind = 'album' | 'playlist';
+
+/* One pending request for the whole page, not one per card: every card has its
+   own hook instance, and the newest click must win whichever card it came from. */
+let pending: { token: number; kind: CollectionKind; id: string } | null = null;
+let requestCounter = 0;
+const pendingListeners = new Set<() => void>();
+
+function setPending(next: typeof pending) {
+  pending = next;
+  pendingListeners.forEach((listener) => listener());
+}
+
+function subscribePending(listener: () => void) {
+  pendingListeners.add(listener);
+  return () => { pendingListeners.delete(listener); };
+}
+
+const getPendingId = () => pending?.id ?? null;
 
 /**
  * Play a whole album or catalogue playlist from a card.
@@ -18,10 +36,7 @@ export type CollectionKind = 'album' | 'playlist';
  * fetching it again, so a second click behaves like the player's own button.
  */
 export function useCollectionPlayback() {
-  const [pendingId, setPendingId] = useState<string | null>(null);
-  /* Guards the gap between click and response, which state cannot: `pendingId`
-     is only visible to this render, and two fast clicks share one. */
-  const pendingRef = useRef<string | null>(null);
+  const pendingId = useSyncExternalStore(subscribePending, getPendingId);
 
   const addToast = useToastStore((state) => state.addToast);
   const playTrack = usePlayerStore((state) => state.playTrack);
@@ -42,14 +57,21 @@ export function useCollectionPlayback() {
 
       const current = usePlayerStore.getState().queueContext;
       if (current.kind === kind && current.id === id) {
+        // Newer than any collection still loading, which is then dropped.
+        if (pending) setPending(null);
         if (usePlayerStore.getState().isPlaying) pauseTrack();
         else setIsPlaying(true);
         return;
       }
 
-      if (pendingRef.current) return;
-      pendingRef.current = id;
-      setPendingId(id);
+      // Already the newest request: a second click must not fetch it twice.
+      if (pending?.kind === kind && pending.id === id) return;
+      const token = ++requestCounter;
+      setPending({ token, kind, id });
+      /* Anything the listener starts meanwhile — a song, another collection —
+         bumps the session, and a response that lands after it is dropped. */
+      const sessionAtClick = usePlayerStore.getState().sessionId;
+      const isStale = () => pending?.token !== token || usePlayerStore.getState().sessionId !== sessionAtClick;
 
       try {
         let tracks: Track[] = [];
@@ -60,6 +82,7 @@ export function useCollectionPlayback() {
           const playlist = await MusicAPI.getPlaylistById(id);
           tracks = playlist?.tracks ?? [];
         }
+        if (isStale()) return;
 
         // A row without a stream cannot be played past, so it never enters the
         // queue: Next would otherwise stall on it.
@@ -75,14 +98,14 @@ export function useCollectionPlayback() {
 
         playTrack(playable[0], playable, 0, { kind, id, name });
       } catch {
+        if (isStale()) return;
         addToast({
           type: 'error',
           title: 'Could not start playback',
           message: `"${name}" could not be loaded.`,
         });
       } finally {
-        pendingRef.current = null;
-        setPendingId(null);
+        if (pending?.token === token) setPending(null);
       }
     },
     [addToast, pauseTrack, playTrack, setIsPlaying],

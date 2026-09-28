@@ -4,9 +4,8 @@ import { ConfirmModal } from '../ConfirmModal';
 import { EmptyPlaylists } from '../EmptyState';
 import { usePlayerStore } from '../../store/playerStore';
 import { useToastStore } from '../../store/toastStore';
+import { FALLBACK_ART, showFallbackArt } from '../../utils/artwork';
 import type { Playlist } from '../../types/types';
-
-const FALLBACK_ART = '/Favicon.png';
 
 function playlistArtwork(playlist: Playlist): string {
   const withArt = playlist.tracks.find((track) => track.album_image || track.image);
@@ -183,11 +182,7 @@ export function PlaylistsPage() {
                       alt=""
                       loading="lazy"
                       decoding="async"
-                      onError={(event) => {
-                        const image = event.currentTarget;
-                        if (image.src.endsWith(FALLBACK_ART)) return;
-                        image.src = FALLBACK_ART;
-                      }}
+                      onError={showFallbackArt}
                     />
                   </button>
 
@@ -227,6 +222,7 @@ export function PlaylistsPage() {
                     <button
                       type="button"
                       className="btn btn-ghost btn-icon btn-sm"
+                      data-menu-trigger
                       onClick={() => setOpenMenuId(openMenuId === playlist.id ? null : playlist.id)}
                       aria-label={`More options for ${playlist.name}`}
                       aria-expanded={openMenuId === playlist.id}

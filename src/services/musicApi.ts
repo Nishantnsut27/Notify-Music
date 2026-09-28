@@ -9,7 +9,6 @@ import type {
 } from '../types/types';
 import { API_ENDPOINTS, PLAYER_DEFAULTS } from '../config/constants';
 import { fetchJson, type ApiResponse } from './apiClient';
-import { formatDuration } from '../utils/formatters';
 
 const searchCache = new Map<string, { timestamp: number; tracks: Track[] }>();
 const CACHE_TTL_MS = 300000;
@@ -182,7 +181,11 @@ export class MusicAPI {
     }
     const query = artistName ? `${albumName} ${artistName}` : albumName;
     const tracks = await this.searchTracks(query, limit);
-    const filtered = tracks.filter(t => (t.album_name || '').toLowerCase().includes(albumName.toLowerCase()) || albumName.toLowerCase().includes((t.album_name || '').toLowerCase()));
+    const target = albumName.toLowerCase();
+    const filtered = tracks.filter(t => {
+      const trackAlbum = (t.album_name || '').trim().toLowerCase();
+      return trackAlbum.length > 0 && (trackAlbum.includes(target) || target.includes(trackAlbum));
+    });
     searchCache.set(cacheKey, { timestamp: Date.now(), tracks: filtered });
     return filtered;
   }
@@ -242,6 +245,3 @@ export class MusicAPI {
     return (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) ? cached.tracks : null;
   }
 }
-
-export const JamendoAPI = MusicAPI;
-export { formatDuration };

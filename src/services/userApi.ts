@@ -1,13 +1,14 @@
-import { fetchJson, API_BASE_URL } from './apiClient';
+import { fetchJson } from './apiClient';
 import { getStoredToken } from './tokenStorage';
+import { BACKEND_URL } from '../config/constants';
 import type { Track, Playlist } from '../types/types';
 
 export interface SearchHistoryItem { query: string; searchedAt: string; }
 
 export type RawHistoryEntry = Track & { playedAt: string | number };
 
-const USER_BASE_URL = `${API_BASE_URL}/api/user`;
-const AUTH_BASE_URL = `${API_BASE_URL}/api/auth`;
+const USER_BASE_URL = `${BACKEND_URL}/api/user`;
+const AUTH_BASE_URL = `${BACKEND_URL}/api/auth`;
 
 export const userApi = {
   // Favorites
@@ -90,7 +91,8 @@ export const userApi = {
       `${USER_BASE_URL}/playlists/${playlistId}/tracks/reorder`,
       {
         method: 'PUT',
-        body: JSON.stringify({ tracks }),
+        // Ids only: full track objects push long playlists past the API's 10 KB body limit.
+        body: JSON.stringify({ tracks: tracks.map((track) => track.id) }),
       }
     );
     return res.data;

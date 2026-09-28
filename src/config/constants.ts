@@ -1,4 +1,6 @@
-export const BACKEND_URL = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_API_URL || 'https://api.soundrift.tech';
+/* The one backend host for music, auth and user calls. Auth cookies are set by
+   this host (the Google OAuth callback lives there), so the fallback must match it. */
+export const BACKEND_URL = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_API_URL || 'https://notify-music.onrender.com';
 export const API_BASE_URL = `${BACKEND_URL}/api/music`;
 
 export const API_ENDPOINTS = {
@@ -28,21 +30,15 @@ export const STORAGE_KEYS = {
   FAVORITES: 'favorites',
   THEME: 'theme',
   PLAYBACK: 'player-playback',
+  /** Id of the account whose library is persisted under PLAYLISTS / FAVORITES. */
+  LIBRARY_OWNER: 'library-owner',
 } as const;
-
-export const VIEWS = {
-  SEARCH: 'search',
-  PLAYLISTS: 'playlists',
-  FAVORITES: 'favorites',
-  RECENTLY_PLAYED: 'recently-played',
-  HISTORY: 'history',
-} as const;
-
-export type ViewType = (typeof VIEWS)[keyof typeof VIEWS];
 
 export const PLAYER_DEFAULTS = {
   DEFAULT_VOLUME: 80,
   SEARCH_DEBOUNCE_MS: 500,
   DEFAULT_SEARCH_LIMIT: 20,
   DEFAULT_TRENDING_LIMIT: 25,
+  /** Upcoming songs downloaded to the device so a locked phone can play on. */
+  PREFETCH_TRACK_COUNT: 3,
 } as const;

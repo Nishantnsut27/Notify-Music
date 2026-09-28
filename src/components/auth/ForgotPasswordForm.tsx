@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { OtpInput } from './OtpInput';
 import { PasswordInput } from './PasswordInput';
+import { AuthTextField } from './AuthTextField';
 import { authApi } from '../../services/authApi';
 import { ApiError } from '../../services/apiClient';
 import { useCountdown } from '../../hooks/useCountdown';
-import { MailIcon, SendIcon, CheckCircleIcon, LockIcon, TimerIcon, AlertCircleIcon, LoaderIcon, ArrowLeftIcon } from './AuthIcons';
+import { MailIcon, CheckCircleIcon, LockIcon, TimerIcon, AlertCircleIcon, LoaderIcon, ArrowLeftIcon } from './AuthIcons';
 
 type ForgotStep = 'email' | 'otp' | 'newPassword';
 
@@ -24,8 +25,16 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBackTo
   const [error, setError] = useState<string | null>(null);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isComplete, setIsComplete] = useState(false);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const { countdown, startCountdown, isActive: isTimerActive } = useCountdown(60);
+
+  const later = useCallback((callback: () => void, ms: number) => {
+    timersRef.current.push(setTimeout(callback, ms));
+  }, []);
+
+  useEffect(() => () => timersRef.current.forEach(clearTimeout), []);
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +47,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBackTo
       await authApi.forgotPassword({ email: email.trim() });
       setStep('otp');
       setSuccessMsg('Password reset code sent successfully.');
-      setTimeout(() => setSuccessMsg(null), 3000);
+      later(() => setSuccessMsg(null), 3000);
       startCountdown();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong.');
@@ -72,7 +81,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBackTo
     try {
       await authApi.resendResetOtp({ email: email.trim() });
       setSuccessMsg('Reset code resent successfully.');
-      setTimeout(() => setSuccessMsg(null), 3000);
+      later(() => setSuccessMsg(null), 3000);
       startCountdown();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong.');
@@ -83,6 +92,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBackTo
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isComplete) return;
     setError(null);
     if (newPassword.length < 6) { setError('Password must be at least 6 characters.'); return; }
     if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return; }
@@ -90,8 +100,10 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBackTo
     setIsLoading(true);
     try {
       await authApi.resetPassword({ email: email.trim(), newPassword, resetToken });
-      setSuccessMsg('Password updated successfully.');
-      setTimeout(() => onSuccess(), 1500);
+      // The reset token is single-use, so the form stays locked until it closes.
+      setIsComplete(true);
+      setSuccessMsg('Password updated successfully. You can log in now.');
+      later(onSuccess, 1500);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong.');
     } finally {
@@ -100,10 +112,21 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBackTo
   };
 
   return (
-    <div className="auth-glass-form forgot-password-form">
-      <div className="auth-silhouette-avatar">
-        {step === 'newPassword' ? <LockIcon size={54} /> : <MailIcon size={54} />}
+    <div className="auth-form">
+      <div className="auth-icon-badge">
+        {step === 'newPassword' ? <LockIcon size={22} /> : <MailIcon size={22} />}
       </div>
+
+      <header className="auth-heading">
+        <h2 id="auth-forgot-title" className="auth-title">
+          {step === 'email' ? 'Reset your password' : step === 'otp' ? 'Check your email' : 'Choose a new password'}
+        </h2>
+        <p className="auth-subtitle">
+          {step === 'email' && <>Enter your account email and we&apos;ll send you a code to reset it.</>}
+          {step === 'otp' && <>Enter the 6-digit code sent to <strong>{email}</strong>.</>}
+          {step === 'newPassword' && <>Use at least 6 characters.</>}
+        </p>
+      </header>
 
       {error && (
         <div className="auth-alert auth-alert-error" role="alert">
@@ -120,57 +143,62 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBackTo
       )}
 
       {step === 'email' && (
-        <form onSubmit={handleSendCode} noValidate>
-          <p className="forgot-password-instruction">
-            Enter your email address and we'll send you a code to reset your password.
-          </p>
-          <div className="auth-glass-field">
-            <div className="auth-input-wrapper">
-              <span className="auth-input-icon-left"><MailIcon size={18} /></span>
-              <input id="forgot-email" name="email" type="email" className="auth-glass-input" value={email} onChange={(e) => { setEmail(e.target.value); setError(null); }} placeholder="Email ID" disabled={isLoading} autoComplete="email" />
-            </div>
-          </div>
-          <button type="submit" className="auth-glass-btn" disabled={isLoading}>
-            {isLoading ? <><LoaderIcon size={18} /> SENDING CODE...</> : 'SEND RESET CODE'}
+        <form className="auth-form auth-step" onSubmit={handleSendCode} noValidate aria-labelledby="auth-forgot-title">
+          <AuthTextField
+            id="forgot-email"
+            name="email"
+            type="email"
+            label="Email"
+            icon={<MailIcon size={18} />}
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); setError(null); }}
+            placeholder="you@example.com"
+            disabled={isLoading}
+            autoComplete="email"
+            inputMode="email"
+            autoCapitalize="none"
+            spellCheck={false}
+          />
+          <button type="submit" className="auth-btn auth-btn-primary" disabled={isLoading} aria-busy={isLoading}>
+            {isLoading ? <><LoaderIcon size={18} /> Sending code…</> : 'Send reset code'}
           </button>
         </form>
       )}
 
       {step === 'otp' && (
-        <div className="otp-step-container">
-          <p className="forgot-password-instruction">
-            Enter the 6-digit code sent to <strong>{email}</strong>
-          </p>
+        <div className="auth-form auth-step">
           <OtpInput value={otp} onChange={(val) => { setOtp(val); setOtpError(null); }} disabled={isLoading} error={otpError || undefined} />
-          <button type="button" className="auth-glass-btn" onClick={handleVerifyOtp} disabled={isLoading || otp.length !== 6}>
-            {isLoading ? <><LoaderIcon size={18} /> VERIFYING...</> : 'VERIFY CODE'}
+          <button type="button" className="auth-btn auth-btn-primary" onClick={handleVerifyOtp} disabled={isLoading || otp.length !== 6} aria-busy={isLoading}>
+            {isLoading ? <><LoaderIcon size={18} /> Verifying…</> : 'Verify code'}
           </button>
           <div className="otp-resend-container">
             {isTimerActive ? (
               <span className="otp-resend-timer"><TimerIcon size={14} /> Resend code in {countdown}s</span>
             ) : (
-              <button type="button" className="otp-resend-btn" onClick={handleResend} disabled={isLoading}>
-                <SendIcon size={14} /> Resend Code
-              </button>
+              <>
+                <span>Didn&apos;t get a code?</span>
+                <button type="button" className="auth-link-btn" onClick={handleResend} disabled={isLoading}>
+                  Resend code
+                </button>
+              </>
             )}
           </div>
         </div>
       )}
 
       {step === 'newPassword' && (
-        <form onSubmit={handleResetPassword} noValidate>
-          <p className="forgot-password-instruction">Enter your new password.</p>
-          <PasswordInput id="reset-new-password" name="newPassword" value={newPassword} onChange={(e) => { setNewPassword(e.target.value); setError(null); }} placeholder="New Password" disabled={isLoading} autoComplete="new-password" />
-          <PasswordInput id="reset-confirm-password" name="confirmPassword" value={confirmPassword} onChange={(e) => { setConfirmPassword(e.target.value); setError(null); }} placeholder="Confirm Password" disabled={isLoading} autoComplete="new-password" />
-          <button type="submit" className="auth-glass-btn" disabled={isLoading}>
-            {isLoading ? <><LoaderIcon size={18} /> RESETTING...</> : 'RESET PASSWORD'}
+        <form className="auth-form auth-step" onSubmit={handleResetPassword} noValidate aria-labelledby="auth-forgot-title">
+          <PasswordInput id="reset-new-password" name="newPassword" label="New password" value={newPassword} onChange={(e) => { setNewPassword(e.target.value); setError(null); }} placeholder="Create a new password" disabled={isLoading} autoComplete="new-password" />
+          <PasswordInput id="reset-confirm-password" name="confirmPassword" label="Confirm new password" value={confirmPassword} onChange={(e) => { setConfirmPassword(e.target.value); setError(null); }} placeholder="Re-enter your new password" disabled={isLoading} autoComplete="new-password" />
+          <button type="submit" className="auth-btn auth-btn-primary" disabled={isLoading || isComplete} aria-busy={isLoading}>
+            {isLoading ? <><LoaderIcon size={18} /> Resetting…</> : isComplete ? 'Password updated' : 'Reset password'}
           </button>
         </form>
       )}
 
-      <div className="auth-flip-trigger-footer">
-        <button type="button" className="auth-flip-trigger-btn" onClick={() => { setError(null); setSuccessMsg(null); onBackToLogin(); }} disabled={isLoading}>
-          <ArrowLeftIcon size={14} /> Back to Login
+      <div className="auth-footer">
+        <button type="button" className="auth-link-btn auth-link-muted" onClick={() => { setError(null); setSuccessMsg(null); onBackToLogin(); }} disabled={isLoading}>
+          <ArrowLeftIcon size={14} /> Back to login
         </button>
       </div>
     </div>

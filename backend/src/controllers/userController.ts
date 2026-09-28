@@ -1,5 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { UserService } from '../services/userService.js';
+import { AuthService } from '../services/authService.js';
 import { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { clearAuthCookies } from '../utils/token.utils.js';
 
@@ -35,24 +36,21 @@ export class UserController {
   public static async getProfile(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user!._id.toString();
-      const favoritesCount = await UserService.getFavorites(userId);
-      const playlists = await UserService.getUserPlaylists(userId);
+      const stats = await UserService.countLibrary(userId);
+      const profile = AuthService.sanitizeUser(req.user!);
 
       res.status(200).json({
         success: true,
         user: {
-          id: req.user!._id.toString(),
-          fullName: req.user!.fullName,
-          email: req.user!.email,
-          avatar: req.user!.avatar || '',
-          role: req.user!.role,
-          accountStatus: req.user!.accountStatus,
-          isEmailVerified: req.user!.isEmailVerified,
-          stats: {
-            favoritesCount: favoritesCount.length,
-            playlistsCount: playlists.length,
-          },
-          createdAt: req.user!.createdAt,
+          id: profile.id,
+          fullName: profile.fullName,
+          email: profile.email,
+          avatar: profile.avatar,
+          role: profile.role,
+          accountStatus: profile.accountStatus,
+          isEmailVerified: profile.isEmailVerified,
+          stats,
+          createdAt: profile.createdAt,
         },
       });
     } catch (error) {
@@ -268,7 +266,8 @@ export class UserController {
 
   public static async recordListeningHistory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { trackData, playDurationSeconds, completed } = req.body;
+      const { playDurationSeconds, completed } = req.body;
+      const trackData = req.body.trackData || req.body;
       await UserService.recordListeningHistory(req.user!._id.toString(), trackData, playDurationSeconds, completed);
       res.status(201).json({
         success: true,

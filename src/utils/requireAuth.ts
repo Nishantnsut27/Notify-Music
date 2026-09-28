@@ -1,6 +1,7 @@
 import { useAuthStore } from '../store/authStore';
+import type { AuthMode } from '../components/auth/AuthModal';
 
-export type AuthGateMode = 'login' | 'register';
+export type AuthGateMode = Extract<AuthMode, 'login' | 'signup'>;
 
 /**
  * Gate for actions that only exist for signed-in users (favorites, playlists,
@@ -12,6 +13,6 @@ export type AuthGateMode = 'login' | 'register';
  */
 export function requireAuth(mode: AuthGateMode = 'login'): boolean {
   if (useAuthStore.getState().isAuthenticated) return true;
-  window.dispatchEvent(new CustomEvent<AuthGateMode>('open-auth-modal', { detail: mode }));
+  window.dispatchEvent(new CustomEvent<AuthMode>('open-auth-modal', { detail: mode }));
   return false;
 }

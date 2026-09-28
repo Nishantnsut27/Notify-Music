@@ -13,6 +13,15 @@ export interface IAuthProvider {
   providerId: string;
 }
 
+export interface IRefreshSession {
+  sessionId?: string;
+  tokenHash: string;
+  previousTokenHash?: string;
+  rotatedAt?: Date;
+  expiresAt: Date;
+  persistent: boolean;
+}
+
 export interface IUser extends Document {
   fullName: string;
   email: string;
@@ -21,6 +30,7 @@ export interface IUser extends Document {
   avatarUrl?: string;
   avatarPublicId?: string;
   authProviders: IAuthProvider[];
+  refreshSessions: IRefreshSession[];
   refreshTokenHash?: string;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
@@ -85,6 +95,21 @@ const userSchema = new Schema<IUser>(
     avatarPublicId: {
       type: String,
       default: '',
+    },
+    refreshSessions: {
+      type: [
+        {
+          sessionId: { type: String },
+          tokenHash: { type: String, required: true },
+          previousTokenHash: { type: String },
+          rotatedAt: { type: Date },
+          expiresAt: { type: Date, required: true },
+          persistent: { type: Boolean, default: true },
+          _id: false,
+        },
+      ],
+      default: [],
+      select: false,
     },
     refreshTokenHash: {
       type: String,

@@ -1,27 +1,44 @@
 import React, { useState } from 'react';
 import { PasswordInput } from './PasswordInput';
 import { OtpInput } from './OtpInput';
+import { AuthTextField } from './AuthTextField';
 import { useAuthStore } from '../../store/authStore';
 import { authApi } from '../../services/authApi';
 import { ApiError } from '../../services/apiClient';
 import { useCountdown } from '../../hooks/useCountdown';
-import { UserIcon, MailIcon, SendIcon, CheckCircleIcon, AlertCircleIcon, TimerIcon, LoaderIcon, CheckIcon, GoogleIcon } from './AuthIcons';
+import { UserIcon, MailIcon, CheckCircleIcon, AlertCircleIcon, TimerIcon, LoaderIcon, CheckIcon, GoogleIcon } from './AuthIcons';
+
+const SIGNUP_STEPS = ['Details', 'Verify email', 'Create account'];
+
+const SignupSteps: React.FC<{ current: number }> = ({ current }) => (
+  <ol className="auth-steps" aria-label={`Sign-up progress: step ${current} of ${SIGNUP_STEPS.length}`}>
+    {SIGNUP_STEPS.map((label, i) => {
+      const step = i + 1;
+      const state = step < current ? ' is-complete' : step === current ? ' is-current' : '';
+      return (
+        <li key={label} className={`auth-steps-item${state}`} aria-current={step === current ? 'step' : undefined}>
+          <span className="auth-steps-bar" />
+          <span className="auth-steps-label">{label}</span>
+        </li>
+      );
+    })}
+  </ol>
+);
 
 interface SignupFormProps {
   onSwitchToLogin: () => void;
   onSuccess?: (userEmail: string) => void;
 }
 
-export const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, onSuccess }) => {
+export const SignupForm: React.FC<SignupFormProps> = ({ onSuccess }) => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [otp, setOtp] = useState('');
   const [showOtpStep, setShowOtpStep] = useState(false);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
-  const [errors, setErrors] = useState<{ fullName?: string; email?: string; password?: string; confirmPassword?: string; terms?: string; }>({});
+  const [errors, setErrors] = useState<{ fullName?: string; email?: string; password?: string; terms?: string; }>({});
   const [otpError, setOtpError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
@@ -50,8 +67,6 @@ export const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, onSucce
     else if (!emailRegex.test(email.trim())) newErrors.email = 'Please enter a valid email address';
     if (!password) newErrors.password = 'Password is required';
     else if (password.length < 6) newErrors.password = 'Password must be at least 6 characters';
-    if (!confirmPassword) newErrors.confirmPassword = 'Confirming password is required';
-    else if (confirmPassword !== password) newErrors.confirmPassword = 'Passwords do not match';
     if (!agreeTerms) newErrors.terms = 'You must accept the Terms of Service';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -115,110 +130,156 @@ export const SignupForm: React.FC<SignupFormProps> = ({ onSwitchToLogin, onSucce
 
   if (isEmailVerified) {
     return (
-      <div className="auth-glass-form">
-        <div className="auth-silhouette-avatar"><CheckCircleIcon size={54} style={{ color: '#1db954' }} /></div>
-        <div className="email-verified-banner"><CheckCircleIcon size={20} /> <span>Email verified successfully</span></div>
+      <div className="auth-form auth-step">
+        <SignupSteps current={3} />
+        <div className="auth-icon-badge"><CheckCircleIcon size={22} /></div>
+        <header className="auth-heading">
+          <h2 id="auth-signup-title" className="auth-title">Email verified</h2>
+          <p className="auth-subtitle">
+            <strong>{email}</strong> is confirmed. Create your account to start listening.
+          </p>
+        </header>
+
         {storeError && (<div className="auth-alert auth-alert-error" role="alert"><AlertCircleIcon size={18} /><span>{storeError}</span></div>)}
-        <button type="button" className="auth-glass-btn" onClick={handleCreateAccount} disabled={isSendingOtp}>
-          {isSendingOtp ? <><LoaderIcon size={18} /> CREATING ACCOUNT...</> : 'CREATE ACCOUNT'}
+
+        <button type="button" className="auth-btn auth-btn-primary" onClick={handleCreateAccount} disabled={isSendingOtp} aria-busy={isSendingOtp}>
+          {isSendingOtp ? <><LoaderIcon size={18} /> Creating account…</> : 'Create account'}
         </button>
-        <div className="auth-flip-trigger-footer">
-          Already have an account?
-          <button type="button" className="auth-flip-trigger-btn" onClick={() => { clearError(); onSwitchToLogin(); }} disabled={isSendingOtp}>Log In</button>
-        </div>
       </div>
     );
   }
 
   return (
-    <form className="auth-glass-form" onSubmit={handleSendVerificationCode} noValidate>
-      <div className="auth-silhouette-avatar"><UserIcon size={54} /></div>
-
-      {(sendError || storeError) && !showOtpStep && (
-        <div className="auth-alert auth-alert-error" role="alert"><AlertCircleIcon size={18} /><span>{sendError || storeError}</span></div>
-      )}
+    <form className="auth-form" onSubmit={handleSendVerificationCode} noValidate aria-labelledby="auth-signup-title">
+      <SignupSteps current={showOtpStep ? 2 : 1} />
 
       {!showOtpStep ? (
-        <>
-          <div className="auth-glass-field">
-            <div className="auth-input-wrapper">
-              <span className="auth-input-icon-left"><UserIcon size={18} /></span>
-              <input id="signup-name" name="fullName" type="text" className={`auth-glass-input ${errors.fullName ? 'is-invalid' : ''}`} value={fullName} onChange={(e) => { setFullName(e.target.value); if (errors.fullName) setErrors((p) => ({ ...p, fullName: undefined })); }} placeholder="Full Name" disabled={isSendingOtp} autoComplete="name" />
-            </div>
-            {errors.fullName && <span className="auth-field-error" role="alert">{errors.fullName}</span>}
-          </div>
+        <div className="auth-form auth-step">
+          <header className="auth-heading">
+            <h2 id="auth-signup-title" className="auth-title">Create your account</h2>
+            <p className="auth-subtitle">Save songs, build playlists, sync everywhere.</p>
+          </header>
 
-          <div className="auth-glass-field">
-            <div className="auth-input-wrapper">
-              <span className="auth-input-icon-left"><MailIcon size={18} /></span>
-              <input id="signup-email" name="email" type="email" className={`auth-glass-input ${errors.email ? 'is-invalid' : ''}`} value={email} onChange={(e) => { setEmail(e.target.value); if (errors.email) setErrors((p) => ({ ...p, email: undefined })); }} placeholder="Email ID" disabled={isSendingOtp} autoComplete="email" />
-            </div>
-            {errors.email && <span className="auth-field-error" role="alert">{errors.email}</span>}
-          </div>
-
-          <PasswordInput id="signup-password" name="password" value={password} onChange={(e) => { setPassword(e.target.value); if (errors.password) setErrors((p) => ({ ...p, password: undefined })); }} placeholder="Password" error={errors.password} disabled={isSendingOtp} autoComplete="new-password" />
-
-          {password.length > 0 && (
-            <div className="password-strength-container">
-              <div className="password-strength-bars">
-                {[1, 2, 3, 4].map((step) => (
-                  <div key={step} className={`password-strength-bar ${strengthInfo.score >= step ? strengthInfo.className : ''}`} />
-                ))}
-              </div>
-              <div className="password-strength-label">
-                <span>Strength:</span>
-                <span className={`strength-text ${strengthInfo.className}`}>{strengthInfo.label}</span>
-              </div>
-            </div>
+          {(sendError || storeError) && (
+            <div className="auth-alert auth-alert-error" role="alert"><AlertCircleIcon size={18} /><span>{sendError || storeError}</span></div>
           )}
 
-          <PasswordInput id="signup-confirm-password" name="confirmPassword" value={confirmPassword} onChange={(e) => { setConfirmPassword(e.target.value); if (errors.confirmPassword) setErrors((p) => ({ ...p, confirmPassword: undefined })); }} placeholder="Confirm Password" error={errors.confirmPassword} disabled={isSendingOtp} autoComplete="new-password" />
+          <a href={authApi.getGoogleAuthUrl()} className="auth-btn auth-btn-secondary" onClick={(e) => { e.preventDefault(); window.location.href = authApi.getGoogleAuthUrl(); }}>
+            <GoogleIcon size={18} />
+            Sign up with Google
+          </a>
 
-          <div className="auth-glass-field">
-            <label className="auth-glass-checkbox-label">
-              <input type="checkbox" className="auth-glass-checkbox-input" checked={agreeTerms} onChange={(e) => { setAgreeTerms(e.target.checked); if (errors.terms) setErrors((p) => ({ ...p, terms: undefined })); }} disabled={isSendingOtp} />
-              <span className="auth-glass-checkbox-custom"><CheckIcon size={10} /></span>
-              I agree to the <a href="/terms" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = '/terms'; }} className="auth-legal-link">Terms</a> &amp; <a href="/privacy" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = '/privacy'; }} className="auth-legal-link">Privacy Policy</a>
-            </label>
-            {errors.terms && <span className="auth-field-error" role="alert">{errors.terms}</span>}
+          <div className="auth-divider"><span>or use your email</span></div>
+
+          <AuthTextField
+            id="signup-name"
+            name="fullName"
+            type="text"
+            label="Full name"
+            icon={<UserIcon size={18} />}
+            value={fullName}
+            onChange={(e) => { setFullName(e.target.value); if (errors.fullName) setErrors((p) => ({ ...p, fullName: undefined })); }}
+            placeholder="Your name"
+            disabled={isSendingOtp}
+            autoComplete="name"
+            error={errors.fullName}
+          />
+
+          <AuthTextField
+            id="signup-email"
+            name="email"
+            type="email"
+            label="Email"
+            icon={<MailIcon size={18} />}
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); if (errors.email) setErrors((p) => ({ ...p, email: undefined })); }}
+            placeholder="you@example.com"
+            disabled={isSendingOtp}
+            autoComplete="email"
+            inputMode="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            error={errors.email}
+          />
+
+          <div className="auth-field-group">
+            <PasswordInput id="signup-password" name="password" label="Password" value={password} onChange={(e) => { setPassword(e.target.value); if (errors.password) setErrors((p) => ({ ...p, password: undefined })); }} placeholder="Create a password" hint={password ? undefined : 'Use at least 6 characters.'} error={errors.password} disabled={isSendingOtp} autoComplete="new-password" />
+
+            {password.length > 0 && (
+              <div className="password-strength-container">
+                <div className="password-strength-bars" aria-hidden="true">
+                  {[1, 2, 3, 4].map((step) => (
+                    <div key={step} className={`password-strength-bar ${strengthInfo.score >= step ? strengthInfo.className : ''}`} />
+                  ))}
+                </div>
+                <div className="password-strength-label" aria-live="polite">
+                  <span>Strength:</span>
+                  <span className={`strength-text ${strengthInfo.className}`}>{strengthInfo.label}</span>
+                </div>
+              </div>
+            )}
           </div>
 
-          <button type="submit" className="auth-glass-btn" disabled={isSendingOtp}>
-            {isSendingOtp ? <><LoaderIcon size={18} /> SENDING CODE...</> : <><MailIcon size={18} /> SEND VERIFICATION CODE</>}
+          <div className="auth-field">
+            <label className="auth-checkbox auth-checkbox-multiline">
+              <input type="checkbox" className="auth-checkbox-input" checked={agreeTerms} onChange={(e) => { setAgreeTerms(e.target.checked); if (errors.terms) setErrors((p) => ({ ...p, terms: undefined })); }} disabled={isSendingOtp} aria-invalid={errors.terms ? true : undefined} aria-describedby={errors.terms ? 'signup-terms-error' : undefined} />
+              <span className="auth-checkbox-box"><CheckIcon size={12} /></span>
+              <span>
+                I agree to the <a href="/terms" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = '/terms'; }} className="auth-legal-link">Terms</a> &amp; <a href="/privacy" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = '/privacy'; }} className="auth-legal-link">Privacy Policy</a>
+              </span>
+            </label>
+            {errors.terms && (
+              <p id="signup-terms-error" className="auth-field-error" role="alert">
+                <AlertCircleIcon size={14} />
+                <span>{errors.terms}</span>
+              </p>
+            )}
+          </div>
+
+          <button type="submit" className="auth-btn auth-btn-primary" disabled={isSendingOtp} aria-busy={isSendingOtp}>
+            {isSendingOtp ? <><LoaderIcon size={18} /> Sending code…</> : 'Send verification code'}
           </button>
-
-          <div className="auth-divider"><span>or</span></div>
-
-          <a href={authApi.getGoogleAuthUrl()} className="auth-google-btn" onClick={(e) => { e.preventDefault(); window.location.href = authApi.getGoogleAuthUrl(); }}>
-            <GoogleIcon size={18} />
-            Continue with Google
-          </a>
-        </>
+        </div>
       ) : (
-        <div className="otp-step-container">
-          <p className="forgot-password-instruction" style={{ marginBottom: '1.25rem' }}>
-            Enter the 6-digit code sent to <strong>{email}</strong>
-          </p>
+        <div className="auth-form auth-step">
+          <div className="auth-icon-badge"><MailIcon size={22} /></div>
+          <header className="auth-heading">
+            <h2 id="auth-signup-title" className="auth-title">Check your email</h2>
+            <p className="auth-subtitle">
+              Enter the 6-digit code sent to <strong>{email}</strong>.
+            </p>
+          </header>
+
           <OtpInput value={otp} onChange={(val) => { setOtp(val); setOtpError(null); }} disabled={isVerifyingOtp} error={otpError || undefined} />
-          <button type="button" className="auth-glass-btn" onClick={handleVerifyOtp} disabled={isVerifyingOtp || otp.length !== 6}>
-            {isVerifyingOtp ? <><LoaderIcon size={18} /> VERIFYING...</> : 'VERIFY CODE'}
+
+          <button type="button" className="auth-btn auth-btn-primary" onClick={handleVerifyOtp} disabled={isVerifyingOtp || otp.length !== 6} aria-busy={isVerifyingOtp}>
+            {isVerifyingOtp ? <><LoaderIcon size={18} /> Verifying…</> : 'Verify code'}
           </button>
+
           <div className="otp-resend-container">
             {isTimerActive ? (
               <span className="otp-resend-timer"><TimerIcon size={14} /> Resend code in {countdown}s</span>
             ) : (
-              <button type="button" className="otp-resend-btn" onClick={handleResendOtp} disabled={isSendingOtp}>
-                <SendIcon size={14} /> {isSendingOtp ? 'Resending...' : 'Resend Code'}
-              </button>
+              <>
+                <span>Didn&apos;t get a code?</span>
+                <button type="button" className="auth-link-btn" onClick={handleResendOtp} disabled={isSendingOtp}>
+                  {isSendingOtp ? 'Resending…' : 'Resend code'}
+                </button>
+              </>
             )}
           </div>
-        </div>
-      )}
 
-      {!showOtpStep && (
-        <div className="auth-flip-trigger-footer">
-          Already have an account?
-          <button type="button" className="auth-flip-trigger-btn" onClick={() => { clearError(); onSwitchToLogin(); }} disabled={isSendingOtp}>Log In</button>
+          <p className="auth-footer">
+            Wrong email?
+            <button
+              type="button"
+              className="auth-link-btn"
+              onClick={() => { setShowOtpStep(false); setOtp(''); setOtpError(null); setSendError(null); }}
+              disabled={isVerifyingOtp}
+            >
+              Change email
+            </button>
+          </p>
         </div>
       )}
     </form>

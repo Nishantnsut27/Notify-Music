@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { usePlayerStore, type AppView } from '../store/playerStore';
 import type { QueueContext, Track } from '../types/types';
@@ -7,7 +7,6 @@ import { TrackCardGrid } from './TrackCardGrid';
 import { ContentSection } from './ContentSection';
 import { MusicAPI } from '../services/musicApi';
 import { SearchBar } from './SearchBar';
-import { SearchResults } from './SearchResults';
 import { CuratedSections } from './CuratedSections';
 
 /** Both shelves on this page play through the list they show. */
@@ -88,57 +87,42 @@ function getPersonalizedGreeting(): string {
 
 export function PersonalizedHome() {
   const { user } = useAuthStore();
-  const {
-    recentlyPlayed,
-    setCurrentView,
-    results,
-    query,
-    isLoading,
-    error,
-    setLoading,
-  } = usePlayerStore();
+  const { recentlyPlayed, setCurrentView } = usePlayerStore();
 
   const [trendingTracks, setTrendingTracks] = useState<Track[]>([]);
   const [trendingPage, setTrendingPage] = useState(0);
+  /* Trending's own flags. The store's isLoading/error belong to search, and
+     sharing them let one surface's spinner or failure show up on the other. */
+  const [isTrendingLoading, setIsTrendingLoading] = useState(true);
+  const [trendingError, setTrendingError] = useState<string | null>(null);
   /* Chosen once, on mount. It used to re-roll every 15 seconds, which meant the
      heading changed under a listener who had not touched anything. */
   const [greeting] = useState(getPersonalizedGreeting);
 
   const firstName = user?.fullName ? user.fullName.split(' ')[0] : '';
 
-  const isSearching = query.trim().length > 0;
-  const sectionRef = useRef<HTMLElement>(null);
+  const featuredTracks = trendingTracks.slice(0, (trendingPage + 1) * TRENDING_PAGE_SIZE);
+  const hasMoreTracks = trendingTracks.length > (trendingPage + 1) * TRENDING_PAGE_SIZE;
 
   useEffect(() => {
-    if (isSearching && sectionRef.current) {
-      sectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [query, isSearching]);
-
-  const featuredTracks = isSearching
-    ? results
-    : trendingTracks.slice(0, (trendingPage + 1) * TRENDING_PAGE_SIZE);
-
-  const hasMoreTracks =
-    !isSearching && trendingTracks.length > (trendingPage + 1) * TRENDING_PAGE_SIZE;
-
-  useEffect(() => {
-    const loadTrending = async () => {
-      if (trendingTracks.length === 0) {
-        setLoading(true);
-        try {
-          const res = await MusicAPI.getTrendingTracks();
-          setTrendingTracks(res);
-        } catch (err) {
-          console.error('Failed to load trending', err);
-        } finally {
-          setLoading(false);
+    let cancelled = false;
+    MusicAPI.getTrendingTracks()
+      .then((res) => {
+        if (!cancelled) setTrendingTracks(res);
+      })
+      .catch((err) => {
+        console.error('Failed to load trending', err);
+        if (!cancelled) {
+          setTrendingError(err instanceof Error ? err.message : 'Trending music is temporarily unavailable.');
         }
-      }
+      })
+      .finally(() => {
+        if (!cancelled) setIsTrendingLoading(false);
+      });
+    return () => {
+      cancelled = true;
     };
-
-    loadTrending();
-  }, [trendingTracks.length, setLoading]);
+  }, []);
 
   return (
     <div className="personalized-home">
@@ -187,36 +171,28 @@ export function PersonalizedHome() {
         </ContentSection>
       )}
 
-      {!isSearching && <CuratedSections />}
+      <CuratedSections />
 
-      <section className="content-section" ref={sectionRef}>
+      <section className="content-section">
         <header className="content-section-head">
           <div className="content-section-heading">
-            <h2 className="t-h2 content-section-title">
-              {isSearching ? 'Search Results' : 'Trending & Recommended'}
-            </h2>
-            {!isSearching && (
-              <p className="t-meta content-section-subtitle">
-                What the catalogue is playing most right now.
-              </p>
-            )}
+            <h2 className="t-h2 content-section-title">Trending &amp; Recommended</h2>
+            <p className="t-meta content-section-subtitle">
+              What the catalogue is playing most right now.
+            </p>
           </div>
         </header>
 
         <div className="content-section-body">
-          {isSearching ? (
-            <SearchResults tracks={results} query={query} isLoading={isLoading} error={error} />
-          ) : (
-            <TrackListModern
-              tracks={featuredTracks}
-              title=""
-              isLoading={isLoading}
-              error={error}
-              queueContext={TRENDING_CONTEXT}
-            />
-          )}
+          <TrackListModern
+            tracks={featuredTracks}
+            title=""
+            isLoading={isTrendingLoading}
+            error={trendingError}
+            queueContext={TRENDING_CONTEXT}
+          />
 
-          {!isSearching && hasMoreTracks && (
+          {hasMoreTracks && (
             <div className="home-load-more">
               <button
                 type="button"

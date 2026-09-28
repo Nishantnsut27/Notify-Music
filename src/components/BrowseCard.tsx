@@ -1,6 +1,5 @@
 import { useCollectionPlayback, type CollectionKind } from '../hooks/useCollectionPlayback';
-
-const FALLBACK_ART = '/Favicon.png';
+import { FALLBACK_ART, showFallbackArt } from '../utils/artwork';
 
 interface BrowseCardProps {
   kind: CollectionKind;
@@ -53,11 +52,7 @@ export function BrowseCard({ kind, id, name, image, meta, onOpen }: BrowseCardPr
             alt=""
             loading="lazy"
             decoding="async"
-            onError={(e) => {
-              const img = e.currentTarget;
-              if (img.src.endsWith(FALLBACK_ART)) return;
-              img.src = FALLBACK_ART;
-            }}
+            onError={showFallbackArt}
           />
         </button>
 

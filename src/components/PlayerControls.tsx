@@ -40,12 +40,11 @@ export function PlayerControls() {
       setShowVolume(false);
     };
 
+    // Taps also emit mousedown; a touchstart listener would close the popup when a scroll starts.
     document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('touchstart', handleOutsideClick, { passive: true });
 
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('touchstart', handleOutsideClick);
     };
   }, [showVolume]);
   

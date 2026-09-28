@@ -1,3 +1,5 @@
+import { BACKEND_URL } from '../config/constants';
+
 export class ApiError extends Error {
   public status: number;
   public details?: unknown;
@@ -17,40 +19,47 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-export const API_BASE_URL = (import.meta.env as Record<string, string | undefined>).VITE_API_URL || 'https://notify-music.onrender.com';
-
 import { getStoredToken, setStoredToken, removeStoredToken, isRememberMe } from './tokenStorage';
 
-let isRefreshing = false;
-let refreshPromise: Promise<boolean> | null = null;
+const UNREACHABLE_MESSAGE = 'Unable to reach the server. Please check your connection and try again.';
 
-async function refreshAccessToken(): Promise<boolean> {
-  if (isRefreshing && refreshPromise) {
-    return refreshPromise;
-  }
+/* Credential and OTP endpoints answer 401 for a wrong password or code, not for
+   an expired access token, so a refresh there would only end a valid session. */
+const NO_REFRESH_PATH = /\/api\/auth\/(login|register|send-otp|verify-otp|forgot-password|verify-reset-otp|reset-password|resend-[\w-]+|refresh)(?:[/?#]|$)/;
 
-  isRefreshing = true;
-  refreshPromise = (async () => {
+type RefreshResult = 'refreshed' | 'expired' | 'unavailable';
+
+let refreshPromise: Promise<RefreshResult> | null = null;
+
+/**
+ * Only a 401/403 from /refresh means the session is over. A 5xx, a cold-start
+ * 502 or a dropped connection says nothing about the session, so it is kept and
+ * the caller gets a retryable error instead.
+ */
+async function refreshAccessToken(): Promise<RefreshResult> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async (): Promise<RefreshResult> => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+      const res = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
       });
-      const data = await res.json();
-      if (res.ok && data.token) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.token) {
         setStoredToken(data.token, isRememberMe());
-        return true;
+        return 'refreshed';
       }
-      removeStoredToken();
-      window.dispatchEvent(new Event('auth:session-expired'));
-      return false;
+      if (res.status === 401 || res.status === 403) {
+        removeStoredToken();
+        window.dispatchEvent(new Event('auth:session-expired'));
+        return 'expired';
+      }
+      return 'unavailable';
     } catch {
-      removeStoredToken();
-      window.dispatchEvent(new Event('auth:session-expired'));
-      return false;
+      return 'unavailable';
     } finally {
-      isRefreshing = false;
       refreshPromise = null;
     }
   })();
@@ -85,10 +94,13 @@ export async function fetchJson<T>(
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
-      if (response.status === 401 && !hasRefreshedToken && !url.includes('/api/auth/refresh')) {
+      if (response.status === 401 && !hasRefreshedToken && !NO_REFRESH_PATH.test(url)) {
         const refreshed = await refreshAccessToken();
-        if (refreshed) {
+        if (refreshed === 'refreshed') {
           return fetchJson<T>(url, options, retries, delay, true);
+        }
+        if (refreshed === 'unavailable') {
+          throw new ApiError(UNREACHABLE_MESSAGE, 503, data);
         }
       }
 
@@ -126,6 +138,6 @@ export async function fetchJson<T>(
       await new Promise((res) => setTimeout(res, delay));
       return fetchJson<T>(url, options, retries - 1, delay * 2, hasRefreshedToken);
     }
-    throw new ApiError(error instanceof Error ? error.message : 'Network request failed', 0);
+    throw new ApiError(UNREACHABLE_MESSAGE, 0);
   }
 }

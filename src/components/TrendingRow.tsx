@@ -1,7 +1,6 @@
 import { formatArtistNames, formatDuration } from '../utils/formatters';
+import { FALLBACK_ART, showFallbackArt } from '../utils/artwork';
 import type { Track } from '../types/types';
-
-const FALLBACK_ART = '/Favicon.png';
 
 interface TrendingRowProps {
   track: Track;
@@ -49,11 +48,7 @@ export function TrendingRow({ track, rank, isCurrent, isPlaying, onPlay }: Trend
             alt=""
             loading="lazy"
             decoding="async"
-            onError={(event) => {
-              const img = event.currentTarget;
-              if (img.src.endsWith(FALLBACK_ART)) return;
-              img.src = FALLBACK_ART;
-            }}
+            onError={showFallbackArt}
           />
           <span className="trending-row-play" aria-hidden="true">
             {active ? (

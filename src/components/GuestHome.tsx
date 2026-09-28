@@ -8,7 +8,6 @@ import { useCuratedSections, findCuratedSection } from '../hooks/useCuratedSecti
 import { useTrackPlayback } from '../hooks/useTrackPlayback';
 import { usePlayerStore } from '../store/playerStore';
 import { requireAuth } from '../utils/requireAuth';
-import type { AppView } from '../store/playerStore';
 import type { CuratedSection, QueueContext, Track } from '../types/types';
 
 /** One clean row per section; the phone rail scrolls through the rest. */
@@ -43,6 +42,7 @@ export function GuestHome() {
   const { sections, isLoading, error } = useCuratedSections();
   const storeTrending = usePlayerStore((state) => state.trending);
   const setCurrentView = usePlayerStore((state) => state.setCurrentView);
+  const openGenre = usePlayerStore((state) => state.openGenre);
 
   const trendingSection = findCuratedSection(sections, TRENDING_ID);
   const freshSection = findCuratedSection(sections, FRESH_ID);
@@ -139,8 +139,7 @@ export function GuestHome() {
             section={freshSection}
             title="Fresh releases"
             subtitle="New music worth hearing."
-            seeAll="new-releases"
-            setCurrentView={setCurrentView}
+            onSeeAll={() => setCurrentView('new-releases')}
           />
         </SectionSlot>
       )}
@@ -162,8 +161,7 @@ export function GuestHome() {
             section={section}
             title={section.title}
             subtitle="More ways in."
-            seeAll="genres"
-            setCurrentView={setCurrentView}
+            onSeeAll={() => openGenre(section.sectionId)}
           />
         </SectionSlot>
       ))}
@@ -211,15 +209,11 @@ interface CuratedRowProps {
   title: string;
   subtitle?: string;
   eyebrow?: string;
-  seeAll?: AppView;
-  setCurrentView?: (view: AppView) => void;
+  onSeeAll?: () => void;
 }
 
-function CuratedRow({ section, title, subtitle, eyebrow, seeAll, setCurrentView }: CuratedRowProps) {
-  const action =
-    seeAll && setCurrentView
-      ? { label: 'See all', onClick: () => setCurrentView(seeAll) }
-      : undefined;
+function CuratedRow({ section, title, subtitle, eyebrow, onSeeAll }: CuratedRowProps) {
+  const action = onSeeAll ? { label: 'See all', onClick: onSeeAll } : undefined;
 
   return (
     <ContentSection title={title} subtitle={subtitle} eyebrow={eyebrow} action={action}>

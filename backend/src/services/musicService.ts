@@ -15,6 +15,14 @@ import { MUSIC_ENGINE_CONFIG, TRENDING_ARTIST_POOL } from '../config/musicEngine
 import { isSearchNoise, normalizeStringForSearch } from '../utils/musicSearch.js';
 import { logger, serializeError } from '../utils/logger.js';
 
+const DEGRADED_CACHE_TTL_MS = 60 * 1000;
+
+const normalizeQueryKey = (query: string): string => query.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/** Fallback or empty results should not stay cached long after JioSaavn recovers. */
+const ttlForSongResult = (fullTtlMs: number) => (result: { songs: Song[]; provider: string }): number =>
+  result.songs.length > 0 && result.provider === 'jiosaavn' ? fullTtlMs : DEGRADED_CACHE_TTL_MS;
+
 export class MusicService {
   /**
    * Typed as the concrete provider, not the interface: the artist catalogue,
@@ -35,7 +43,7 @@ export class MusicService {
       return { songs: [], provider: 'jiosaavn' };
     }
 
-    const trimmedQuery = query.trim().toLowerCase();
+    const trimmedQuery = normalizeQueryKey(query);
     const cacheKey = `search:${trimmedQuery}:${limit}`;
 
     return globalCacheService.getOrFetch(cacheKey, async () => {
@@ -57,7 +65,17 @@ export class MusicService {
         const jamendoSongs = await this.jamendoProvider.search(trimmedQuery, limit);
         return { songs: jamendoSongs.slice(0, limit), provider: 'jamendo' };
       }
-    }, MUSIC_ENGINE_CONFIG.searchCacheTtlMs);
+    }, MUSIC_ENGINE_CONFIG.searchCacheTtlMs, false, ttlForSongResult(MUSIC_ENGINE_CONFIG.searchCacheTtlMs));
+  }
+
+  /** JioSaavn throws (404 for foreign ids, 5xx/timeouts in outages) instead of returning null; either way Jamendo gets a turn. */
+  private async fromJioSaavn<T>(action: string, id: string, lookup: () => Promise<T | null>): Promise<T | null> {
+    try {
+      return await lookup();
+    } catch (error) {
+      logger.warn('MusicService', `JioSaavn ${action} failed; trying Jamendo`, { id, error: serializeError(error) });
+      return null;
+    }
   }
 
   async getSongById(id: string, refresh = false): Promise<Song | null> {
@@ -65,7 +83,7 @@ export class MusicService {
     const cacheKey = `song:${id}`;
 
     return globalCacheService.getOrFetch(cacheKey, async () => {
-      const song = await this.jiosaavnProvider.getSongById(id);
+      const song = await this.fromJioSaavn('song lookup', id, () => this.jiosaavnProvider.getSongById(id));
       if (song) {
         return song;
       }
@@ -79,7 +97,7 @@ export class MusicService {
     const cacheKey = `album:${id}`;
 
     return globalCacheService.getOrFetch(cacheKey, async () => {
-      const album = await this.jiosaavnProvider.getAlbumById(id);
+      const album = await this.fromJioSaavn('album lookup', id, () => this.jiosaavnProvider.getAlbumById(id));
       if (album) {
         return album;
       }
@@ -104,7 +122,7 @@ export class MusicService {
 
   async searchPlaylists(query: string, limit = 10): Promise<PlaylistSummary[]> {
     if (!query || !query.trim()) return [];
-    const cacheKey = `playlist-search:${normalizeStringForSearch(query)}:${limit}`;
+    const cacheKey = `playlist-search:${normalizeQueryKey(query)}:${limit}`;
 
     const result = await globalCacheService.getOrFetch(
       cacheKey,
@@ -120,7 +138,7 @@ export class MusicService {
     const cacheKey = `playlist:${id}:${limit}`;
 
     return globalCacheService.getOrFetch(cacheKey, async () => {
-      const playlist = await this.jiosaavnProvider.getPlaylistById(id, limit);
+      const playlist = await this.fromJioSaavn('playlist lookup', id, () => this.jiosaavnProvider.getPlaylistById(id, limit));
       if (playlist) {
         return playlist;
       }
@@ -151,7 +169,6 @@ export class MusicService {
 
     const seen = new Set<string>([String(source.id)]);
     const scored: ScoredCandidate[] = [];
-    const providerNativeIds = new Set<string>();
 
     for (let slot = 0; slot < settled.length; slot++) {
       const result = settled[slot];
@@ -163,15 +180,7 @@ export class MusicService {
         if (seen.has(String(candidate.id))) continue;
         seen.add(String(candidate.id));
 
-        if (isProviderNative) providerNativeIds.add(String(candidate.id));
-        const entry = scoreCandidate(source, candidate, isProviderNative);
-        scored.push(entry);
-      }
-    }
-
-    for (const entry of scored) {
-      if (providerNativeIds.has(String(entry.song.id))) {
-        entry.score += 8;
+        scored.push(scoreCandidate(source, candidate, isProviderNative));
       }
     }
 
@@ -259,7 +268,7 @@ export class MusicService {
       });
 
       return { songs: finalSongs, provider };
-    }, MUSIC_ENGINE_CONFIG.trendingCacheTtlMs);
+    }, MUSIC_ENGINE_CONFIG.trendingCacheTtlMs, false, ttlForSongResult(MUSIC_ENGINE_CONFIG.trendingCacheTtlMs));
   }
 
   private shuffleArray<T>(items: T[]): T[] {

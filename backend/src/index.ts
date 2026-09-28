@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import { config, validateConfig } from './config/config.js';
-import { connectDatabase, getDatabaseState } from './config/database.js';
+import { connectDatabase, disconnectDatabase, getDatabaseState } from './config/database.js';
 import { musicRouter } from './routes/musicRoutes.js';
 import { authRouter } from './routes/authRoutes.js';
 import { userRouter } from './routes/userRoutes.js';
@@ -12,6 +12,8 @@ import { healthLimiter } from './middleware/rateLimit.middleware.js';
 import { botProtectionMiddleware, recordIpViolation } from './middleware/security.middleware.js';
 import { errorHandlerMiddleware } from './middleware/error.middleware.js';
 import { curationScheduler } from './services/curationScheduler.js';
+import { AppError } from './utils/AppError.js';
+import { ensureRecentlyPlayedIndexes } from './models/recentlyPlayed.model.js';
 
 // Validate required environment variables on startup
 validateConfig();
@@ -33,7 +35,7 @@ const isOriginAllowed = (origin: string): boolean => {
     const wildcardIndex = allowed.indexOf('://*.');
     if (wildcardIndex === -1) return false;
     const scheme = allowed.slice(0, wildcardIndex + 3);
-    const domainSuffix = allowed.slice(wildcardIndex + 4);
+    const domainSuffix = allowed.slice(wildcardIndex + 5);
     const originSchemeEnd = origin.indexOf('://');
     if (originSchemeEnd === -1) return false;
     const originHost = origin.slice(originSchemeEnd + 3);
@@ -47,7 +49,7 @@ const corsOptions: cors.CorsOptions = {
       callback(null, true);
       return;
     }
-    callback(new Error('Origin not permitted by CORS policy.'));
+    callback(new AppError('Origin not permitted by CORS policy.', 403));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -59,8 +61,8 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 app.use(compression());
+// JSON only: form-encoded bodies are what cross-site <form> posts send along with SameSite=None cookies.
 app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser(config.cookieSecret));
 app.use(botProtectionMiddleware);
 
@@ -99,14 +101,32 @@ app.use((req, res) => {
 app.use(errorHandlerMiddleware);
 
 // Initialize database connection before listening for HTTP requests
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ Unhandled promise rejection:', reason);
+});
+
 const startServer = async () => {
   try {
     await connectDatabase();
-    app.listen(config.port, () => {
+    await ensureRecentlyPlayedIndexes();
+    const server = app.listen(config.port, () => {
       console.log(`🚀 Soundrift Backend running on http://localhost:${config.port}`);
     });
 
     curationScheduler.start();
+
+    const shutdown = (signal: NodeJS.Signals) => {
+      console.log(`🛑 ${signal} received, shutting down gracefully...`);
+      curationScheduler.stop();
+      setTimeout(() => process.exit(1), SHUTDOWN_TIMEOUT_MS).unref();
+      server.close(() => {
+        disconnectDatabase().finally(() => process.exit(0));
+      });
+    };
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
   } catch (err) {
     console.error('💥 Fatal Startup Failure:', err);
     process.exit(1);

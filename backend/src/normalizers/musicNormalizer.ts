@@ -9,17 +9,35 @@ import {
 } from '../models/music.model.js';
 import { extractBestImage, extractBestAudioUrl, extractFallbackAudioUrl } from '../utils/mediaHelper.js';
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  quot: '"',
+  apos: "'",
+  lt: '<',
+  gt: '>',
+  nbsp: ' ',
+};
+
+const ENTITY_PATTERN = /&(#x[0-9a-f]+|#\d+|[a-z]+);/gi;
+
+function decodeEntity(match: string, body: string): string {
+  if (body[0] === '#') {
+    const codePoint = body[1] === 'x' || body[1] === 'X' ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+    return Number.isInteger(codePoint) && codePoint > 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : match;
+  }
+  return NAMED_ENTITIES[body.toLowerCase()] ?? match;
+}
+
 function cleanText(str: string | undefined | null): string {
   if (!str) return '';
-  return str
-    .replace(/&quot;/gi, '"')
-    .replace(/&amp;/gi, '&')
-    .replace(/&#039;/gi, "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&nbsp;/gi, ' ')
-    .trim();
+  // Upstream titles are sometimes double-encoded (`&amp;quot;`), so decode until stable.
+  let text = str;
+  for (let pass = 0; pass < 3; pass++) {
+    const decoded = text.replace(ENTITY_PATTERN, decodeEntity);
+    if (decoded === text) break;
+    text = decoded;
+  }
+  return text.trim();
 }
 
 /** Turns a raw `{ id, name }`-ish entry into a credit, or null if it is unusable. */
