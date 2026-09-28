@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { SearchBar } from './components/SearchBar';
 import { PlayerControls } from './components/PlayerControls';
 import { QueuePanel } from './components/QueuePanel';
@@ -116,7 +116,8 @@ function App() {
   const [legalPage, setLegalPage] = useState<'terms' | 'privacy' | null>(null);
   const [isAwaitingAuth, setIsAwaitingAuth] = useState(() => {
     const auth = useAuthStore.getState();
-    return !auth.isAuthenticated && !auth.isInitialized && isSignedInPath(window.location.pathname);
+    return !auth.isAuthenticated && (!auth.isInitialized || auth.isSessionRetryPending)
+      && isSignedInPath(window.location.pathname);
   });
 
   useEffect(() => {
@@ -130,7 +131,7 @@ function App() {
     };
   }, []);
 
-  const { isAuthenticated, isInitialized: isAuthInitialized, checkAuth } = useAuthStore();
+  const { isAuthenticated, isInitialized: isAuthInitialized, isSessionRetryPending, checkAuth } = useAuthStore();
   const { addToast } = useToastStore();
 
   useEffect(() => {
@@ -205,9 +206,10 @@ function App() {
     /* Until the session check settles "not signed in" only means "not known
        yet". Redirecting a reload of /favorites then would always land on Home,
        so a signed-in-only path is held — URL untouched, nothing rendered — and
-       routed again once the auth store is initialized. */
-    const { isAuthenticated: isAuth, isInitialized } = useAuthStore.getState();
-    const waitForAuth = !isAuth && !isInitialized && isSignedInPath(rawPath);
+       routed again once the auth store is initialized. A check that failed
+       transiently (offline, 5xx) and is being retried is still "not known yet". */
+    const { isAuthenticated: isAuth, isInitialized, isSessionRetryPending: retryPending } = useAuthStore.getState();
+    const waitForAuth = !isAuth && (!isInitialized || retryPending) && isSignedInPath(rawPath);
     setIsAwaitingAuth(waitForAuth);
     if (waitForAuth) return;
 
@@ -273,8 +275,24 @@ function App() {
   }, [routeFromUrl]);
 
   useEffect(() => {
-    if (isAuthInitialized && isAwaitingAuth) routeFromUrl();
-  }, [isAuthInitialized, isAwaitingAuth, routeFromUrl]);
+    if (isAwaitingAuth && isAuthInitialized && (isAuthenticated || !isSessionRetryPending)) routeFromUrl();
+  }, [isAuthInitialized, isAuthenticated, isSessionRetryPending, isAwaitingAuth, routeFromUrl]);
+
+  /* Navigating somewhere else while the deep link is held abandons it; otherwise
+     the content area would stay empty until the session check gives up. */
+  const heldAtRef = useRef<{ view: string; entity: unknown } | null>(null);
+  useEffect(() => {
+    if (!isAwaitingAuth) {
+      heldAtRef.current = null;
+      return;
+    }
+    const { currentView: view, detailEntity: entity } = usePlayerStore.getState();
+    if (!heldAtRef.current) {
+      heldAtRef.current = { view, entity };
+      return;
+    }
+    if (heldAtRef.current.view !== view || heldAtRef.current.entity !== entity) setIsAwaitingAuth(false);
+  }, [isAwaitingAuth, currentView, detailEntity]);
 
   useEffect(() => {
     if (!isAuthenticated && PROTECTED_VIEWS.includes(currentView)) {
@@ -552,7 +570,7 @@ function App() {
         {/* Offline replaces only the content: the player and queue stay mounted,
             because cached songs keep playing and still need pause and skip. */}
         <div className="app-content">
-          {isOffline ? <OfflinePage onRetry={retryConnection} /> : isAwaitingAuth ? null : renderMainContent()}
+          {isOffline ? <OfflinePage onRetry={retryConnection} /> : isAwaitingAuth && !isAuthInitialized ? null : renderMainContent()}
         </div>
       </main>
 

@@ -471,10 +471,6 @@ export class AuthService {
     );
   }
 
-  private static async revokeAllSessions(userId: IUser['_id']): Promise<void> {
-    await User.updateOne({ _id: userId }, { $set: { refreshSessions: [] }, $unset: { refreshTokenHash: 1 } });
-  }
-
   private static async isPersistentSession(userId: IUser['_id'], refreshToken?: string): Promise<boolean> {
     if (!refreshToken) return true;
     const user = await User.findById(userId).select('+refreshSessions');
@@ -509,9 +505,17 @@ export class AuthService {
 
     const persistent = await this.isPersistentSession(user._id, currentRefreshToken);
 
-    user.password = await hashPassword(newPassword);
-    await user.save();
-    await this.revokeAllSessions(user._id);
+    // One write: a new password must never coexist with the sessions it was meant to end.
+    const result = await User.updateOne(
+      { _id: user._id, password: user.password },
+      {
+        $set: { password: await hashPassword(newPassword), refreshSessions: [] },
+        $unset: { refreshTokenHash: 1 },
+      }
+    );
+    if (result.modifiedCount === 0) {
+      throw new AppError('Your password was changed by another request. Please try again.', 409);
+    }
 
     return this.startSession(user, persistent);
   }

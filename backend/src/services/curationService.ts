@@ -72,9 +72,16 @@ function toStoredTrack(song: Song): ISongSubDoc {
   };
 }
 
+const overlapKeysOf = (track: ISongSubDoc): string[] => [
+  `id:${track.id}`,
+  `ta:${buildCandidateKey(track.name || '', track.artist_name || '')}`,
+];
+
 /**
  * Sibling sections are deduplicated at generation time, but a sibling that refreshes while another
- * is mid-generation compares against stale tracks. Re-checking here keeps each song in one row.
+ * is mid-generation compares against stale tracks. Re-checking here keeps each song in one row,
+ * with the same exception generation makes: a row short of unique songs keeps overlaps up to the
+ * visible threshold rather than shrinking or disappearing.
  */
 function dedupeAcrossOverlapGroups(records: CuratedSectionRecord[]): CuratedSectionRecord[] {
   const order = new Map(CURATED_SECTIONS.map((definition, index) => [definition.id, index]));
@@ -87,12 +94,18 @@ function dedupeAcrossOverlapGroups(records: CuratedSectionRecord[]): CuratedSect
       const seen = seenByGroup.get(group) ?? new Set<string>();
       seenByGroup.set(group, seen);
 
-      const tracks = record.tracks.filter(track => {
-        const keys = [`id:${track.id}`, `ta:${buildCandidateKey(track.name || '', track.artist_name || '')}`];
-        if (keys.some(key => seen.has(key))) return false;
-        keys.forEach(key => seen.add(key));
+      const overlaps = record.tracks.map(track => overlapKeysOf(track).some(key => seen.has(key)));
+      const uniqueCount = overlaps.filter(isOverlap => !isOverlap).length;
+      let refillAllowance = Math.max(0, CURATION_ENGINE_CONFIG.initialVisibleTracks - uniqueCount);
+
+      const tracks = record.tracks.filter((_, index) => {
+        if (!overlaps[index]) return true;
+        if (refillAllowance === 0) return false;
+        refillAllowance--;
         return true;
       });
+      tracks.forEach(track => overlapKeysOf(track).forEach(key => seen.add(key)));
+
       return tracks.length === record.tracks.length ? record : { ...record, tracks };
     });
 }

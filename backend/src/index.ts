@@ -13,6 +13,7 @@ import { botProtectionMiddleware, recordIpViolation } from './middleware/securit
 import { errorHandlerMiddleware } from './middleware/error.middleware.js';
 import { curationScheduler } from './services/curationScheduler.js';
 import { AppError } from './utils/AppError.js';
+import { ensureRecentlyPlayedIndexes } from './models/recentlyPlayed.model.js';
 
 // Validate required environment variables on startup
 validateConfig();
@@ -109,6 +110,7 @@ process.on('unhandledRejection', (reason) => {
 const startServer = async () => {
   try {
     await connectDatabase();
+    await ensureRecentlyPlayedIndexes();
     const server = app.listen(config.port, () => {
       console.log(`🚀 Soundrift Backend running on http://localhost:${config.port}`);
     });

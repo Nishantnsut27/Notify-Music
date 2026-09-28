@@ -8,6 +8,8 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   isInitialized: boolean;
+  /** The last session check failed transiently (offline, 5xx) and another attempt is scheduled. */
+  isSessionRetryPending: boolean;
   isLoading: boolean;
   error: string | null;
   errorCode: string | null;
@@ -51,6 +53,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   token: getStoredToken(),
   isAuthenticated: false,
   isInitialized: false,
+  isSessionRetryPending: false,
   isLoading: false,
   error: null,
   errorCode: null,
@@ -68,6 +71,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         token: response.token || getStoredToken(),
         isAuthenticated: true,
         isInitialized: true,
+        isSessionRetryPending: false,
         isLoading: false,
         error: null,
       });
@@ -101,6 +105,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         token: response.token || getStoredToken(),
         isAuthenticated: true,
         isInitialized: true,
+        isSessionRetryPending: false,
         isLoading: false,
         error: null,
       });
@@ -132,6 +137,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         user: null,
         token: null,
         isAuthenticated: false,
+        isSessionRetryPending: false,
         isLoading: false,
         error: null,
       });
@@ -170,6 +176,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         user: response.user,
         isAuthenticated: true,
         isInitialized: true,
+        isSessionRetryPending: false,
         error: null,
       });
       syncLibrary();
@@ -183,6 +190,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           token: null,
           isAuthenticated: false,
           isInitialized: true,
+          isSessionRetryPending: false,
         });
         if (hadSession) clearSignedInLibrary();
         return;
@@ -191,7 +199,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     /* Offline, a 5xx or a cold-starting server says nothing about the session:
        keep the token and the library, and look again shortly. */
-    set({ isInitialized: true });
+    const willRetry = hadSession && (authRetryTimer !== null || authRetryAttempt < AUTH_RETRY_DELAYS_MS.length);
+    set({ isInitialized: true, isSessionRetryPending: willRetry });
     if (hadSession && !authRetryTimer && authRetryAttempt < AUTH_RETRY_DELAYS_MS.length) {
       authRetryTimer = setTimeout(() => {
         authRetryTimer = null;
@@ -220,6 +229,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           user: response.user,
           isAuthenticated: true,
           isInitialized: true,
+          isSessionRetryPending: false,
           error: null,
         });
         cleanUrl();
