@@ -261,6 +261,11 @@ interface UIStore {
    * all other views. A genre's id is its category key, not a catalogue id.
    */
   detailEntity: { kind: 'album' | 'genre' | 'playlist'; id: string } | null;
+  /**
+   * Bumped by every navigation request, including one to the view already on screen,
+   * so "the listener chose somewhere" is observable even when the view doesn't change.
+   */
+  viewRequestId: number;
   /** Whether the queue drawer is on screen. Session-only, like the queue itself. */
   isQueueOpen: boolean;
 
@@ -664,6 +669,7 @@ export const usePlayerStore = create<AppStore>()(
     isSidebarOpen: false,
     currentView: 'home',
     detailEntity: null,
+    viewRequestId: 0,
     isQueueOpen: false,
     theme: loadFromLocalStorage(STORAGE_KEYS.THEME, 'dark'),
 
@@ -1278,10 +1284,10 @@ export const usePlayerStore = create<AppStore>()(
 
     toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
     closeSidebar: () => set({ isSidebarOpen: false }),
-    setCurrentView: (view) => set({ currentView: view, detailEntity: null }),
-    openAlbum: (id: string) => set({ currentView: 'album', detailEntity: { kind: 'album', id } }),
-    openGenre: (id: string) => set({ currentView: 'genre', detailEntity: { kind: 'genre', id } }),
-    openPlaylist: (id: string) => set({ currentView: 'playlist', detailEntity: { kind: 'playlist', id } }),
+    setCurrentView: (view) => set((state) => ({ currentView: view, detailEntity: null, viewRequestId: state.viewRequestId + 1 })),
+    openAlbum: (id: string) => set((state) => ({ currentView: 'album', detailEntity: { kind: 'album', id }, viewRequestId: state.viewRequestId + 1 })),
+    openGenre: (id: string) => set((state) => ({ currentView: 'genre', detailEntity: { kind: 'genre', id }, viewRequestId: state.viewRequestId + 1 })),
+    openPlaylist: (id: string) => set((state) => ({ currentView: 'playlist', detailEntity: { kind: 'playlist', id }, viewRequestId: state.viewRequestId + 1 })),
 
     toggleQueue: () => set((state) => ({ isQueueOpen: !state.isQueueOpen })),
     closeQueue: () => set({ isQueueOpen: false }),

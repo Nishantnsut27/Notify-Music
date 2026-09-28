@@ -35,6 +35,7 @@ import { AuthModal, type AuthMode } from './components/auth/AuthModal';
 import { useAuthStore } from './store/authStore';
 import { InstallButton } from './pwa/InstallButton';
 import { OfflinePage } from './pwa/OfflinePage';
+import { EmptyState } from './components/EmptyState';
 
 import './styles/variables.css';
 import './styles/foundation.css';
@@ -176,6 +177,7 @@ function App() {
   }, []);
 
   const detailEntity = usePlayerStore((state) => state.detailEntity);
+  const viewRequestId = usePlayerStore((state) => state.viewRequestId);
 
   const {
     currentView,
@@ -278,21 +280,21 @@ function App() {
     if (isAwaitingAuth && isAuthInitialized && (isAuthenticated || !isSessionRetryPending)) routeFromUrl();
   }, [isAuthInitialized, isAuthenticated, isSessionRetryPending, isAwaitingAuth, routeFromUrl]);
 
-  /* Navigating somewhere else while the deep link is held abandons it; otherwise
-     the content area would stay empty until the session check gives up. */
-  const heldAtRef = useRef<{ view: string; entity: unknown } | null>(null);
+  /* Any navigation while the deep link is held abandons it, including choosing the
+     view already on screen (Home), so a later successful retry can't pull the
+     listener back to the page they left. */
+  const heldAtRequestRef = useRef<number | null>(null);
   useEffect(() => {
     if (!isAwaitingAuth) {
-      heldAtRef.current = null;
+      heldAtRequestRef.current = null;
       return;
     }
-    const { currentView: view, detailEntity: entity } = usePlayerStore.getState();
-    if (!heldAtRef.current) {
-      heldAtRef.current = { view, entity };
+    if (heldAtRequestRef.current === null) {
+      heldAtRequestRef.current = viewRequestId;
       return;
     }
-    if (heldAtRef.current.view !== view || heldAtRef.current.entity !== entity) setIsAwaitingAuth(false);
-  }, [isAwaitingAuth, currentView, detailEntity]);
+    if (viewRequestId !== heldAtRequestRef.current) setIsAwaitingAuth(false);
+  }, [isAwaitingAuth, viewRequestId]);
 
   useEffect(() => {
     if (!isAuthenticated && PROTECTED_VIEWS.includes(currentView)) {
@@ -570,7 +572,22 @@ function App() {
         {/* Offline replaces only the content: the player and queue stay mounted,
             because cached songs keep playing and still need pause and skip. */}
         <div className="app-content">
-          {isOffline ? <OfflinePage onRetry={retryConnection} /> : isAwaitingAuth && !isAuthInitialized ? null : renderMainContent()}
+          {isOffline ? (
+            <OfflinePage onRetry={retryConnection} />
+          ) : isAwaitingAuth ? (
+            /* The first session check is quick, so it shows nothing; a check being retried
+               keeps the destination pending instead of showing guest Home at a signed-in URL. */
+            isAuthInitialized ? (
+              <EmptyState
+                title="Reconnecting to your account"
+                description="We'll open this page as soon as your session is confirmed."
+                actionText="Go to Home"
+                onAction={() => setCurrentView('home')}
+              />
+            ) : null
+          ) : (
+            renderMainContent()
+          )}
         </div>
       </main>
 

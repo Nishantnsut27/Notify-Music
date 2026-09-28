@@ -247,7 +247,8 @@ export class AuthService {
     );
   }
 
-  private static async startSession(user: IUser, persistent: boolean): Promise<AuthSession> {
+  /** Tokens plus the session record they belong to, not yet stored. */
+  private static mintSession(user: IUser, persistent: boolean) {
     const sessionId = crypto.randomUUID();
     const accessToken = generateAccessToken(user._id.toString(), user.role, sessionId);
     const refreshToken = generateRefreshToken(user._id.toString(), user.role);
@@ -257,6 +258,11 @@ export class AuthService {
       expiresAt: getTokenExpiry(refreshToken),
       persistent,
     };
+    return { accessToken, refreshToken, session };
+  }
+
+  private static async startSession(user: IUser, persistent: boolean): Promise<AuthSession> {
+    const { accessToken, refreshToken, session } = this.mintSession(user, persistent);
     const lastLoginAt = new Date();
 
     await User.updateOne(
@@ -504,12 +510,15 @@ export class AuthService {
     }
 
     const persistent = await this.isPersistentSession(user._id, currentRefreshToken);
+    const { accessToken, refreshToken, session } = this.mintSession(user, persistent);
+    const lastLoginAt = new Date();
 
-    // One write: a new password must never coexist with the sessions it was meant to end.
+    // One write replaces the password and every session with this device's new one, so a
+    // reset landing afterwards clears it like any other session instead of racing a second write.
     const result = await User.updateOne(
       { _id: user._id, password: user.password },
       {
-        $set: { password: await hashPassword(newPassword), refreshSessions: [] },
+        $set: { password: await hashPassword(newPassword), refreshSessions: [session], lastLoginAt },
         $unset: { refreshTokenHash: 1 },
       }
     );
@@ -517,7 +526,8 @@ export class AuthService {
       throw new AppError('Your password was changed by another request. Please try again.', 409);
     }
 
-    return this.startSession(user, persistent);
+    user.lastLoginAt = lastLoginAt;
+    return { user: this.sanitizeUser(user), accessToken, refreshToken, persistent };
   }
 
   static async sendResetOtp(email: string): Promise<void> {
