@@ -1,7 +1,10 @@
-import { WifiOff, RotateCcw } from 'lucide-react';
+import { WifiOff, RotateCcw, Download } from 'lucide-react';
+import { usePlayerStore } from '../store/playerStore';
 
 /** Shown in the content area while offline; the app shell and player stay usable around it. */
 export function OfflinePage({ onRetry }: { onRetry: () => void }) {
+  const setCurrentView = usePlayerStore((state) => state.setCurrentView);
+
   return (
     <div className="offline-page" role="status">
       <div className="offline-page-content">
@@ -13,9 +16,13 @@ export function OfflinePage({ onRetry }: { onRetry: () => void }) {
           You need an internet connection to stream music, browse your library, and search for tracks.
         </p>
         <div className="offline-actions">
-          <button className="offline-btn offline-btn-primary" onClick={onRetry}>
+          <button className="offline-btn offline-btn-primary" onClick={() => setCurrentView('offline')}>
+            <Download size={16} />
+            Open Offline Music
+          </button>
+          <button className="offline-btn" onClick={onRetry}>
             <RotateCcw size={16} />
-            Retry
+            Retry connection
           </button>
         </div>
       </div>

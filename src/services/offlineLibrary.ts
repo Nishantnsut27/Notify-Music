@@ -1,5 +1,6 @@
 import type { Track } from '../types/types';
 import { useAuthStore } from '../store/authStore';
+import { getLibraryOwner } from './tokenStorage';
 
 const CACHE_NAME = 'soundrift-offline-v1';
 const STORAGE_PREFIX = 'soundrift-offline-library-v1:';
@@ -23,46 +24,142 @@ export interface OfflineDownloadProgress {
 }
 
 let activeOwner = '';
+let activeLegacyOwner: string | null = null;
 let records: OfflineTrackRecord[] = [];
 let cachePromise: Promise<Cache | null> | null = null;
 
-function ownerId(): string | null {
-  return useAuthStore.getState().user?.id ?? null;
+const DEVICE_OWNER = 'device';
+
+function ownerId(): string {
+  return DEVICE_OWNER;
 }
-function storageKey(owner: string): string { return `${STORAGE_PREFIX}${owner}`; }
+
+function legacyOwnerId(): string | null {
+  return useAuthStore.getState().user?.id ?? getLibraryOwner();
+}
+
+function storageKey(owner: string): string {
+  return STORAGE_PREFIX + owner;
+}
+
+function requestForOwner(track: Track, owner: string): Request {
+  const key = owner + ':' + (track.provider || 'default') + ':' + track.id;
+  return new Request(new URL('/__soundrift-offline__/' + encodeURIComponent(key), window.location.origin).href);
+}
+
 function requestFor(track: Track): Request {
-  const owner = activeOwner || 'anonymous';
-  const key = `${owner}:${track.provider || 'default'}:${track.id}`;
-  return new Request(new URL(`/__soundrift-offline__/${encodeURIComponent(key)}`, window.location.origin).href);
+  return requestForOwner(track, activeOwner || DEVICE_OWNER);
 }
-function hydrate(): void {
-  const owner = ownerId() || '';
-  if (owner === activeOwner) return;
-  activeOwner = owner;
-  records = [];
-  if (!owner) return;
+
+function parseRecords(raw: string | null): OfflineTrackRecord[] {
   try {
-    const raw = localStorage.getItem(storageKey(owner));
     const parsed = raw ? JSON.parse(raw) as unknown : [];
-    if (Array.isArray(parsed)) {
-      records = parsed.filter((item): item is OfflineTrackRecord =>
-        !!item && typeof item === 'object'
-        && typeof (item as OfflineTrackRecord).savedAt === 'number'
-        && typeof (item as OfflineTrackRecord).size === 'number'
-        && !!(item as OfflineTrackRecord).track
-        && typeof (item as OfflineTrackRecord).track.id === 'string'
-      );
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is OfflineTrackRecord =>
+      !!item && typeof item === 'object'
+      && typeof (item as OfflineTrackRecord).savedAt === 'number'
+      && typeof (item as OfflineTrackRecord).size === 'number'
+      && !!(item as OfflineTrackRecord).track
+      && typeof (item as OfflineTrackRecord).track.id === 'string'
+    );
+  } catch {
+    return [];
+  }
+}
+
+function mergeRecords(base: OfflineTrackRecord[], extra: OfflineTrackRecord[]): OfflineTrackRecord[] {
+  const merged = new Map<string, OfflineTrackRecord>();
+  for (const record of [...base, ...extra]) {
+    const key = (record.track.provider || 'default') + ':' + record.track.id;
+    const previous = merged.get(key);
+    if (!previous || record.savedAt > previous.savedAt) merged.set(key, record);
+  }
+  return [...merged.values()].sort((a, b) => b.savedAt - a.savedAt);
+}
+
+function hydrate(): void {
+  const owner = ownerId();
+  const legacyOwner = legacyOwnerId();
+
+  if (owner !== activeOwner) {
+    activeOwner = owner;
+    records = parseRecords(localStorage.getItem(storageKey(owner)));
+    activeLegacyOwner = null;
+  }
+
+  if (legacyOwner && legacyOwner !== owner && legacyOwner !== activeLegacyOwner) {
+    const legacyRecords = parseRecords(localStorage.getItem(storageKey(legacyOwner)));
+    if (legacyRecords.length) {
+      records = mergeRecords(records, legacyRecords);
     }
-  } catch { records = []; }
+    activeLegacyOwner = legacyOwner;
+  }
 }
 function persist(): void {
   if (!activeOwner) return;
   try { localStorage.setItem(storageKey(activeOwner), JSON.stringify(records)); } catch { /* best effort */ }
 }
+async function migrateLegacyCache(cache: Cache): Promise<void> {
+  const legacyOwner = legacyOwnerId();
+  if (!legacyOwner || legacyOwner === DEVICE_OWNER) return;
+
+  const legacyKey = storageKey(legacyOwner);
+  const legacyRecords = parseRecords(localStorage.getItem(legacyKey));
+  if (!legacyRecords.length) return;
+
+  const deviceRecords = parseRecords(localStorage.getItem(storageKey(DEVICE_OWNER)));
+  const mergedRecords = mergeRecords(deviceRecords, legacyRecords);
+
+  try {
+    localStorage.setItem(storageKey(DEVICE_OWNER), JSON.stringify(mergedRecords));
+  } catch {
+    return;
+  }
+
+  let migrationComplete = true;
+
+  for (const record of legacyRecords) {
+    const oldRequest = requestForOwner(record.track, legacyOwner);
+    const newRequest = requestForOwner(record.track, DEVICE_OWNER);
+    try {
+      if (await cache.match(newRequest)) {
+        await cache.delete(oldRequest);
+        continue;
+      }
+
+      const response = await cache.match(oldRequest);
+      if (!response) {
+        migrationComplete = false;
+        continue;
+      }
+
+      await cache.put(newRequest, response.clone());
+      await cache.delete(oldRequest);
+    } catch {
+      migrationComplete = false;
+    }
+  }
+
+  if (migrationComplete) {
+    try {
+      localStorage.removeItem(legacyKey);
+    } catch {
+      // Best effort; retaining stale metadata is safer than losing the record.
+    }
+    if (activeLegacyOwner === legacyOwner) activeLegacyOwner = null;
+  }
+}
+
 async function openCache(): Promise<Cache | null> {
-  if (cachePromise) return cachePromise;
-  cachePromise = typeof caches === 'undefined' ? Promise.resolve(null) : caches.open(CACHE_NAME).catch(() => null);
-  return cachePromise;
+  if (!cachePromise) {
+    cachePromise = typeof caches === 'undefined'
+      ? Promise.resolve(null)
+      : caches.open(CACHE_NAME).catch(() => null);
+  }
+
+  const cache = await cachePromise;
+  if (cache) await migrateLegacyCache(cache);
+  return cache;
 }
 function findRecord(track: Track): OfflineTrackRecord | undefined {
   hydrate();
@@ -145,7 +242,6 @@ export async function getOfflineStorageStats() {
 }
 export async function saveOfflineTrack(track: Track, onProgress?: (progress: OfflineDownloadProgress) => void): Promise<void> {
   hydrate();
-  if (!activeOwner) throw new Error('Sign in to save music for offline playback.');
   if (findRecord(track) && await isOfflineSaved(track)) return;
   const source = track.audio || track.audiodownload;
   if (!source) throw new Error('This track does not have a playable audio source.');

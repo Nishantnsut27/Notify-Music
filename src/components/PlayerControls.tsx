@@ -6,6 +6,7 @@ import { useToastStore } from '../store/toastStore';
 import { formatDuration, formatArtistNames } from '../utils/formatters';
 import { requireAuth } from '../utils/requireAuth';
 import { AudioVisualizer } from './AudioVisualizer';
+import { isOfflineSaved, removeOfflineTrack, saveOfflineTrack } from '../services/offlineLibrary';
 
 export function PlayerControls() {
   const [showVolume, setShowVolume] = useState(false);
@@ -92,6 +93,57 @@ export function PlayerControls() {
   const volumePercent = isMuted ? 0 : volume;
 
   const isFavorite = currentTrack ? favorites.some(f => f.id === currentTrack.id) : false;
+  const [offlineSaved, setOfflineSaved] = useState(false);
+  const [offlineBusy, setOfflineBusy] = useState(false);
+  const [offlineStatusPending, setOfflineStatusPending] = useState(true);
+  const offlineStatusRequestRef = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+
+    const refreshOfflineStatus = async () => {
+      const requestId = ++offlineStatusRequestRef.current;
+
+      if (!currentTrack) {
+        if (active && requestId === offlineStatusRequestRef.current) {
+          setOfflineSaved(false);
+          setOfflineStatusPending(false);
+        }
+        return;
+      }
+
+      setOfflineStatusPending(true);
+      setOfflineSaved(false);
+
+      try {
+        const saved = await isOfflineSaved(currentTrack);
+        if (active && requestId === offlineStatusRequestRef.current) {
+          setOfflineSaved(saved);
+        }
+      } catch {
+        if (active && requestId === offlineStatusRequestRef.current) {
+          setOfflineSaved(false);
+        }
+      } finally {
+        if (active && requestId === offlineStatusRequestRef.current) {
+          setOfflineStatusPending(false);
+        }
+      }
+    };
+
+    void refreshOfflineStatus();
+
+    const handleOfflineLibraryChange = () => {
+      void refreshOfflineStatus();
+    };
+
+    window.addEventListener('soundrift-offline-library-changed', handleOfflineLibraryChange);
+    return () => {
+      active = false;
+      ++offlineStatusRequestRef.current;
+      window.removeEventListener('soundrift-offline-library-changed', handleOfflineLibraryChange);
+    };
+  }, [currentTrack]);
 
   const handleVolumeMouseEnter = useCallback(() => {
     if (isMobile) return;
@@ -240,6 +292,26 @@ export function PlayerControls() {
       setShowVolume((prev) => !prev);
     } else {
       mute();
+    }
+  };
+
+  const handleToggleOffline = async () => {
+    if (!currentTrack || offlineBusy || offlineStatusPending) return;
+    setOfflineBusy(true);
+    try {
+      if (offlineSaved) {
+        await removeOfflineTrack(currentTrack);
+        setOfflineSaved(false);
+        addToast({ type: 'info', message: `Removed from offline music: ${currentTrack.name}` });
+      } else {
+        await saveOfflineTrack(currentTrack);
+        setOfflineSaved(true);
+        addToast({ type: 'success', message: `Available offline: ${currentTrack.name}` });
+      }
+    } catch (error) {
+      addToast({ type: 'error', title: 'Offline save failed', message: error instanceof Error ? error.message : 'Soundrift could not save this track offline.' });
+    } finally {
+      setOfflineBusy(false);
     }
   };
 
@@ -448,6 +520,36 @@ export function PlayerControls() {
             <line x1="3" y1="12" x2="15" y2="12" />
             <line x1="3" y1="18" x2="11" y2="18" />
             <polygon points="18,7 18,17 23,12" fill="currentColor" stroke="none" />
+          </svg>
+        </button>
+
+        <button
+          className={`control-btn player-offline-btn ${offlineSaved ? 'is-on' : ''}`}
+          onClick={() => void handleToggleOffline()}
+          disabled={offlineBusy || offlineStatusPending}
+          title={
+            offlineStatusPending
+              ? 'Checking offline status…'
+              : offlineBusy
+                ? 'Saving offline…'
+                : offlineSaved
+                  ? 'Remove from offline'
+                  : 'Make available offline'
+          }
+          aria-label={
+            offlineStatusPending
+              ? 'Checking offline status'
+              : offlineBusy
+                ? 'Saving offline'
+                : offlineSaved
+                  ? 'Remove from offline'
+                  : 'Make available offline'
+          }
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3v12" />
+            <path d="m7 10 5 5 5-5" />
+            <path d="M5 21h14" />
           </svg>
         </button>
 
