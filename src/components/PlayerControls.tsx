@@ -95,17 +95,42 @@ export function PlayerControls() {
   const isFavorite = currentTrack ? favorites.some(f => f.id === currentTrack.id) : false;
   const [offlineSaved, setOfflineSaved] = useState(false);
   const [offlineBusy, setOfflineBusy] = useState(false);
+  const [offlineStatusPending, setOfflineStatusPending] = useState(true);
 
   useEffect(() => {
-    if (!currentTrack) {
-      setOfflineSaved(false);
-      return;
-    }
     let active = true;
-    void isOfflineSaved(currentTrack).then((saved) => {
-      if (active) setOfflineSaved(saved);
-    });
-    return () => { active = false; };
+
+    const refreshOfflineStatus = async () => {
+      if (!currentTrack) {
+        setOfflineSaved(false);
+        setOfflineStatusPending(false);
+        return;
+      }
+
+      setOfflineStatusPending(true);
+      setOfflineSaved(false);
+
+      try {
+        const saved = await isOfflineSaved(currentTrack);
+        if (active) setOfflineSaved(saved);
+      } catch {
+        if (active) setOfflineSaved(false);
+      } finally {
+        if (active) setOfflineStatusPending(false);
+      }
+    };
+
+    void refreshOfflineStatus();
+
+    const handleOfflineLibraryChange = () => {
+      void refreshOfflineStatus();
+    };
+
+    window.addEventListener('soundrift-offline-library-changed', handleOfflineLibraryChange);
+    return () => {
+      active = false;
+      window.removeEventListener('soundrift-offline-library-changed', handleOfflineLibraryChange);
+    };
   }, [currentTrack]);
 
   const handleVolumeMouseEnter = useCallback(() => {
@@ -259,7 +284,7 @@ export function PlayerControls() {
   };
 
   const handleToggleOffline = async () => {
-    if (!currentTrack || offlineBusy) return;
+    if (!currentTrack || offlineBusy || offlineStatusPending) return;
     setOfflineBusy(true);
     try {
       if (offlineSaved) {
@@ -487,11 +512,27 @@ export function PlayerControls() {
         </button>
 
         <button
-          className={`control-btn offline-btn ${offlineSaved ? 'is-on' : ''}`}
+          className={`control-btn player-offline-btn ${offlineSaved ? 'is-on' : ''}`}
           onClick={() => void handleToggleOffline()}
-          disabled={offlineBusy}
-          title={offlineBusy ? 'Saving offline…' : offlineSaved ? 'Remove from offline' : 'Make available offline'}
-          aria-label={offlineBusy ? 'Saving offline' : offlineSaved ? 'Remove from offline' : 'Make available offline'}
+          disabled={offlineBusy || offlineStatusPending}
+          title={
+            offlineStatusPending
+              ? 'Checking offline status…'
+              : offlineBusy
+                ? 'Saving offline…'
+                : offlineSaved
+                  ? 'Remove from offline'
+                  : 'Make available offline'
+          }
+          aria-label={
+            offlineStatusPending
+              ? 'Checking offline status'
+              : offlineBusy
+                ? 'Saving offline'
+                : offlineSaved
+                  ? 'Remove from offline'
+                  : 'Make available offline'
+          }
         >
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 3v12" />

@@ -527,6 +527,32 @@
   color: var(--primary);
 }
 
+/* Offline action is intentionally scoped to the compact player. The generic
+ * offline-page button uses the same semantic name but needs very different sizing. */
+.player-offline-btn {
+  color: var(--text-2);
+}
+
+.player-offline-btn:hover {
+  color: var(--primary-light);
+  background: rgba(29, 185, 84, 0.12);
+}
+
+.player-offline-btn.is-on {
+  color: var(--primary-light);
+  background: rgba(29, 185, 84, 0.14);
+}
+
+.player-offline-btn.is-on:hover {
+  color: var(--primary);
+  background: rgba(29, 185, 84, 0.2);
+}
+
+.player-offline-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .close-btn {
   color: var(--text-3);
 }
