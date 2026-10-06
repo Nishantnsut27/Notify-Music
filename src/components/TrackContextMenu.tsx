@@ -63,13 +63,13 @@ export function TrackContextMenu({
   const isFavorite = favorites.some((item) => String(item.id) === String(track.id));
 
   useEffect(() => {
-    if (!isOpen || !isAuthenticated) return;
+    if (!isOpen) return;
     let active = true;
     void isOfflineSaved(track).then((saved) => {
       if (active) setOfflineSaved(saved);
     });
     return () => { active = false; };
-  }, [isOpen, isAuthenticated, track]);
+  }, [isOpen, track]);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
@@ -226,7 +226,6 @@ export function TrackContextMenu({
   }
 
   async function handleToggleOffline() {
-    if (!requireAuth('login')) return;
     setOfflineBusy(true);
     try {
       if (offlineSaved) {
@@ -304,12 +303,10 @@ export function TrackContextMenu({
 
           <div className="action-menu-divider" role="separator" />
 
-          {isAuthenticated && (
-            <button type="button" role="menuitem" data-menu-item className="action-menu-item" disabled={offlineBusy} onClick={() => void handleToggleOffline()}>
-              <DownloadIcon />
-              <span>{offlineBusy ? 'Saving offline…' : offlineSaved ? 'Remove from offline' : 'Make available offline'}</span>
-            </button>
-          )}
+          <button type="button" role="menuitem" data-menu-item className="action-menu-item" disabled={offlineBusy} onClick={() => void handleToggleOffline()}>
+            <DownloadIcon />
+            <span>{offlineBusy ? 'Saving offline…' : offlineSaved ? 'Remove from offline' : 'Make available offline'}</span>
+          </button>
 
           <button type="button" role="menuitem" data-menu-item className="action-menu-item" onClick={() => run(handleToggleFavorite)}>
             <HeartIcon filled={isAuthenticated && isFavorite} />

@@ -354,14 +354,10 @@ export function Sidebar() {
             {DISCOVER_NAV.map(renderNavItem)}
           </ul>
 
-          {isAuthenticated && (
-            <>
-              <p className="sidebar-nav-heading" id="sidebar-nav-library">My Library</p>
-              <ul className="sidebar-nav-list" aria-labelledby="sidebar-nav-library">
-                {LIBRARY_NAV.map(renderNavItem)}
-              </ul>
-            </>
-          )}
+          <p className="sidebar-nav-heading" id="sidebar-nav-library">My Library</p>
+          <ul className="sidebar-nav-list" aria-labelledby="sidebar-nav-library">
+            {(isAuthenticated ? LIBRARY_NAV : LIBRARY_NAV.filter((item) => item.view === 'offline')).map(renderNavItem)}
+          </ul>
         </nav>
 
         {/* Collapsible Library Section for Authenticated Users */}

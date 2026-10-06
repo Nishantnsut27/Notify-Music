@@ -22,7 +22,6 @@ const FavoritesPage = lazy(withChunkReload(() => import('./components/library/Fa
 const PlaylistsPage = lazy(withChunkReload(() => import('./components/library/PlaylistsPage').then(m => ({ default: m.PlaylistsPage }))));
 const PlaylistPage = lazy(withChunkReload(() => import('./components/library/PlaylistPage').then(m => ({ default: m.PlaylistPage }))));
 const HistoryPage = lazy(withChunkReload(() => import('./components/library/HistoryPage').then(m => ({ default: m.HistoryPage }))));
-const OfflineLibraryPage = lazy(withChunkReload(() => import('./components/library/OfflineLibraryPage').then(m => ({ default: m.OfflineLibraryPage }))));
 import { usePlayerStore, type AppView } from './store/playerStore';
 import { useToastStore } from './store/toastStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -36,6 +35,7 @@ import { AuthModal, type AuthMode } from './components/auth/AuthModal';
 import { useAuthStore } from './store/authStore';
 import { InstallButton } from './pwa/InstallButton';
 import { OfflinePage } from './pwa/OfflinePage';
+import { OfflineLibraryPage } from './components/library/OfflineLibraryPage';
 import { EmptyState } from './components/EmptyState';
 
 import './styles/variables.css';
@@ -67,7 +67,7 @@ function safeDecode(segment: string): string {
  * guest reaching them is sent home with an explanation rather than shown an
  * empty page that looks broken.
  */
-const PROTECTED_VIEWS: AppView[] = ['favorites', 'playlists', 'playlist', 'history', 'offline'];
+const PROTECTED_VIEWS: AppView[] = ['favorites', 'playlists', 'playlist', 'history'];
 
 /**
  * The one listen-log page. Recently Played was a second view over the same
@@ -88,7 +88,6 @@ function isSignedInPath(rawPath: string): boolean {
     path.includes('/favorites') ||
     path.includes('/playlists') ||
     path.includes('/history') ||
-    path.includes('/offline') ||
     HISTORY_ALIASES.includes(path)
   );
 }

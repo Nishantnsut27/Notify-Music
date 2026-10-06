@@ -1,5 +1,4 @@
 import type { Track } from '../types/types';
-import { useAuthStore } from '../store/authStore';
 
 const CACHE_NAME = 'soundrift-offline-v1';
 const STORAGE_PREFIX = 'soundrift-offline-library-v1:';
@@ -26,8 +25,8 @@ let activeOwner = '';
 let records: OfflineTrackRecord[] = [];
 let cachePromise: Promise<Cache | null> | null = null;
 
-function ownerId(): string | null {
-  return useAuthStore.getState().user?.id ?? null;
+function ownerId(): string {
+  return 'device';
 }
 function storageKey(owner: string): string { return `${STORAGE_PREFIX}${owner}`; }
 function requestFor(track: Track): Request {
@@ -145,7 +144,6 @@ export async function getOfflineStorageStats() {
 }
 export async function saveOfflineTrack(track: Track, onProgress?: (progress: OfflineDownloadProgress) => void): Promise<void> {
   hydrate();
-  if (!activeOwner) throw new Error('Sign in to save music for offline playback.');
   if (findRecord(track) && await isOfflineSaved(track)) return;
   const source = track.audio || track.audiodownload;
   if (!source) throw new Error('This track does not have a playable audio source.');
