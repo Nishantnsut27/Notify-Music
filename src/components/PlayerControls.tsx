@@ -96,14 +96,19 @@ export function PlayerControls() {
   const [offlineSaved, setOfflineSaved] = useState(false);
   const [offlineBusy, setOfflineBusy] = useState(false);
   const [offlineStatusPending, setOfflineStatusPending] = useState(true);
+  const offlineStatusRequestRef = useRef(0);
 
   useEffect(() => {
     let active = true;
 
     const refreshOfflineStatus = async () => {
+      const requestId = ++offlineStatusRequestRef.current;
+
       if (!currentTrack) {
-        setOfflineSaved(false);
-        setOfflineStatusPending(false);
+        if (active && requestId === offlineStatusRequestRef.current) {
+          setOfflineSaved(false);
+          setOfflineStatusPending(false);
+        }
         return;
       }
 
@@ -112,11 +117,17 @@ export function PlayerControls() {
 
       try {
         const saved = await isOfflineSaved(currentTrack);
-        if (active) setOfflineSaved(saved);
+        if (active && requestId === offlineStatusRequestRef.current) {
+          setOfflineSaved(saved);
+        }
       } catch {
-        if (active) setOfflineSaved(false);
+        if (active && requestId === offlineStatusRequestRef.current) {
+          setOfflineSaved(false);
+        }
       } finally {
-        if (active) setOfflineStatusPending(false);
+        if (active && requestId === offlineStatusRequestRef.current) {
+          setOfflineStatusPending(false);
+        }
       }
     };
 
@@ -129,6 +140,7 @@ export function PlayerControls() {
     window.addEventListener('soundrift-offline-library-changed', handleOfflineLibraryChange);
     return () => {
       active = false;
+      ++offlineStatusRequestRef.current;
       window.removeEventListener('soundrift-offline-library-changed', handleOfflineLibraryChange);
     };
   }, [currentTrack]);

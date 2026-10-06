@@ -24,6 +24,7 @@ export interface OfflineDownloadProgress {
 }
 
 let activeOwner = '';
+let activeLegacyOwner: string | null = null;
 let records: OfflineTrackRecord[] = [];
 let cachePromise: Promise<Cache | null> | null = null;
 
@@ -78,17 +79,20 @@ function mergeRecords(base: OfflineTrackRecord[], extra: OfflineTrackRecord[]): 
 
 function hydrate(): void {
   const owner = ownerId();
-  if (owner === activeOwner) return;
-  activeOwner = owner;
-  records = parseRecords(localStorage.getItem(storageKey(owner)));
-
   const legacyOwner = legacyOwnerId();
-  if (legacyOwner && legacyOwner !== owner) {
+
+  if (owner !== activeOwner) {
+    activeOwner = owner;
+    records = parseRecords(localStorage.getItem(storageKey(owner)));
+    activeLegacyOwner = null;
+  }
+
+  if (legacyOwner && legacyOwner !== owner && legacyOwner !== activeLegacyOwner) {
     const legacyRecords = parseRecords(localStorage.getItem(storageKey(legacyOwner)));
     if (legacyRecords.length) {
       records = mergeRecords(records, legacyRecords);
-      try { localStorage.setItem(storageKey(owner), JSON.stringify(records)); } catch { /* best effort */ }
     }
+    activeLegacyOwner = legacyOwner;
   }
 }
 function persist(): void {
@@ -99,8 +103,18 @@ async function migrateLegacyCache(cache: Cache): Promise<void> {
   const legacyOwner = legacyOwnerId();
   if (!legacyOwner || legacyOwner === DEVICE_OWNER) return;
 
-  const legacyRecords = parseRecords(localStorage.getItem(storageKey(legacyOwner)));
+  const legacyKey = storageKey(legacyOwner);
+  const legacyRecords = parseRecords(localStorage.getItem(legacyKey));
   if (!legacyRecords.length) return;
+
+  const deviceRecords = parseRecords(localStorage.getItem(storageKey(DEVICE_OWNER)));
+  const mergedRecords = mergeRecords(deviceRecords, legacyRecords);
+
+  try {
+    localStorage.setItem(storageKey(DEVICE_OWNER), JSON.stringify(mergedRecords));
+  } catch {
+    return;
+  }
 
   let migrationComplete = true;
 
@@ -112,8 +126,13 @@ async function migrateLegacyCache(cache: Cache): Promise<void> {
         await cache.delete(oldRequest);
         continue;
       }
+
       const response = await cache.match(oldRequest);
-      if (!response) continue;
+      if (!response) {
+        migrationComplete = false;
+        continue;
+      }
+
       await cache.put(newRequest, response.clone());
       await cache.delete(oldRequest);
     } catch {
@@ -122,21 +141,25 @@ async function migrateLegacyCache(cache: Cache): Promise<void> {
   }
 
   if (migrationComplete) {
-    try { localStorage.removeItem(storageKey(legacyOwner)); } catch { /* best effort */ }
+    try {
+      localStorage.removeItem(legacyKey);
+    } catch {
+      // Best effort; retaining stale metadata is safer than losing the record.
+    }
+    if (activeLegacyOwner === legacyOwner) activeLegacyOwner = null;
   }
 }
 
 async function openCache(): Promise<Cache | null> {
-  if (cachePromise) return cachePromise;
-  cachePromise = typeof caches === 'undefined'
-    ? Promise.resolve(null)
-    : caches.open(CACHE_NAME)
-      .then(async (cache) => {
-        await migrateLegacyCache(cache);
-        return cache;
-      })
-      .catch(() => null);
-  return cachePromise;
+  if (!cachePromise) {
+    cachePromise = typeof caches === 'undefined'
+      ? Promise.resolve(null)
+      : caches.open(CACHE_NAME).catch(() => null);
+  }
+
+  const cache = await cachePromise;
+  if (cache) await migrateLegacyCache(cache);
+  return cache;
 }
 function findRecord(track: Track): OfflineTrackRecord | undefined {
   hydrate();
