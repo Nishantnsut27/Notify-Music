@@ -1,4 +1,6 @@
 import type { Track } from '../types/types';
+import { useAuthStore } from '../store/authStore';
+import { getLibraryOwner } from './tokenStorage';
 
 const CACHE_NAME = 'soundrift-offline-v1';
 const STORAGE_PREFIX = 'soundrift-offline-library-v1:';
@@ -25,14 +27,69 @@ let activeOwner = '';
 let records: OfflineTrackRecord[] = [];
 let cachePromise: Promise<Cache | null> | null = null;
 
+const DEVICE_OWNER = 'device';
+
 function ownerId(): string {
-  return 'device';
+  return DEVICE_OWNER;
 }
-function storageKey(owner: string): string { return `${STORAGE_PREFIX}${owner}`; }
+
+function legacyOwnerId(): string | null {
+  return useAuthStore.getState().user?.id ?? getLibraryOwner();
+}
+
+function storageKey(owner: string): string {
+  return STORAGE_PREFIX + owner;
+}
+
+function requestForOwner(track: Track, owner: string): Request {
+  const key = owner + ':' + (track.provider || 'default') + ':' + track.id;
+  return new Request(new URL('/__soundrift-offline__/' + encodeURIComponent(key), window.location.origin).href);
+}
+
 function requestFor(track: Track): Request {
-  const owner = activeOwner || 'anonymous';
-  const key = `${owner}:${track.provider || 'default'}:${track.id}`;
-  return new Request(new URL(`/__soundrift-offline__/${encodeURIComponent(key)}`, window.location.origin).href);
+  return requestForOwner(track, activeOwner || DEVICE_OWNER);
+}
+
+function parseRecords(raw: string | null): OfflineTrackRecord[] {
+  try {
+    const parsed = raw ? JSON.parse(raw) as unknown : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is OfflineTrackRecord =>
+      !!item && typeof item === 'object'
+      && typeof (item as OfflineTrackRecord).savedAt === 'number'
+      && typeof (item as OfflineTrackRecord).size === 'number'
+      && !!(item as OfflineTrackRecord).track
+      && typeof (item as OfflineTrackRecord).track.id === 'string'
+    );
+  } catch {
+    return [];
+  }
+}
+
+function mergeRecords(base: OfflineTrackRecord[], extra: OfflineTrackRecord[]): OfflineTrackRecord[] {
+  const merged = new Map<string, OfflineTrackRecord>();
+  for (const record of [...base, ...extra]) {
+    const key = (record.track.provider || 'default') + ':' + record.track.id;
+    const previous = merged.get(key);
+    if (!previous || record.savedAt > previous.savedAt) merged.set(key, record);
+  }
+  return [...merged.values()].sort((a, b) => b.savedAt - a.savedAt);
+}
+
+function hydrate(): void {
+  const owner = ownerId();
+  if (owner === activeOwner) return;
+  activeOwner = owner;
+  records = parseRecords(localStorage.getItem(storageKey(owner)));
+
+  const legacyOwner = legacyOwnerId();
+  if (legacyOwner && legacyOwner !== owner) {
+    const legacyRecords = parseRecords(localStorage.getItem(storageKey(legacyOwner)));
+    if (legacyRecords.length) {
+      records = mergeRecords(records, legacyRecords);
+      try { localStorage.setItem(storageKey(owner), JSON.stringify(records)); } catch { /* best effort */ }
+    }
+  }
 }
 function hydrate(): void {
   const owner = ownerId() || '';
@@ -58,9 +115,47 @@ function persist(): void {
   if (!activeOwner) return;
   try { localStorage.setItem(storageKey(activeOwner), JSON.stringify(records)); } catch { /* best effort */ }
 }
+async function migrateLegacyCache(cache: Cache): Promise<void> {
+  const legacyOwner = legacyOwnerId();
+  if (!legacyOwner || legacyOwner === DEVICE_OWNER) return;
+
+  const legacyRecords = parseRecords(localStorage.getItem(storageKey(legacyOwner)));
+  if (!legacyRecords.length) return;
+
+  let migrationComplete = true;
+
+  for (const record of legacyRecords) {
+    const oldRequest = requestForOwner(record.track, legacyOwner);
+    const newRequest = requestForOwner(record.track, DEVICE_OWNER);
+    try {
+      if (await cache.match(newRequest)) {
+        await cache.delete(oldRequest);
+        continue;
+      }
+      const response = await cache.match(oldRequest);
+      if (!response) continue;
+      await cache.put(newRequest, response.clone());
+      await cache.delete(oldRequest);
+    } catch {
+      migrationComplete = false;
+    }
+  }
+
+  if (migrationComplete) {
+    try { localStorage.removeItem(storageKey(legacyOwner)); } catch { /* best effort */ }
+  }
+}
+
 async function openCache(): Promise<Cache | null> {
   if (cachePromise) return cachePromise;
-  cachePromise = typeof caches === 'undefined' ? Promise.resolve(null) : caches.open(CACHE_NAME).catch(() => null);
+  cachePromise = typeof caches === 'undefined'
+    ? Promise.resolve(null)
+    : caches.open(CACHE_NAME)
+      .then(async (cache) => {
+        await migrateLegacyCache(cache);
+        return cache;
+      })
+      .catch(() => null);
   return cachePromise;
 }
 function findRecord(track: Track): OfflineTrackRecord | undefined {
