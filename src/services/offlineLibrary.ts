@@ -91,26 +91,6 @@ function hydrate(): void {
     }
   }
 }
-function hydrate(): void {
-  const owner = ownerId() || '';
-  if (owner === activeOwner) return;
-  activeOwner = owner;
-  records = [];
-  if (!owner) return;
-  try {
-    const raw = localStorage.getItem(storageKey(owner));
-    const parsed = raw ? JSON.parse(raw) as unknown : [];
-    if (Array.isArray(parsed)) {
-      records = parsed.filter((item): item is OfflineTrackRecord =>
-        !!item && typeof item === 'object'
-        && typeof (item as OfflineTrackRecord).savedAt === 'number'
-        && typeof (item as OfflineTrackRecord).size === 'number'
-        && !!(item as OfflineTrackRecord).track
-        && typeof (item as OfflineTrackRecord).track.id === 'string'
-      );
-    }
-  } catch { records = []; }
-}
 function persist(): void {
   if (!activeOwner) return;
   try { localStorage.setItem(storageKey(activeOwner), JSON.stringify(records)); } catch { /* best effort */ }
