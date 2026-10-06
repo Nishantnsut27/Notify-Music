@@ -5,6 +5,7 @@ import { MusicAPI } from './musicApi';
 import { TrackPrefetcher, type PreparedTrack } from './trackPrefetch';
 import { getUpcomingQueueIndexes } from '../utils/queuePlayback';
 import { FALLBACK_ART } from '../utils/artwork';
+import { getOfflineBlob } from './offlineLibrary';
 
 let singletonAudio: HTMLAudioElement | null = null;
 let initialized = false;
@@ -29,6 +30,7 @@ let syncingPlayback = false;
 let interruptedPlayback: { track: Track; session: number } | null = null;
 let automaticResumeUsed = false;
 let reportingFailure = false;
+let offlineResolutionId = 0;
 
 export function getAudio(): HTMLAudioElement {
   if (!singletonAudio) {
@@ -177,6 +179,7 @@ function syncPlaybackState() {
   audio.volume = state.isMuted ? 0 : Math.max(0, Math.min(1, state.volume / 100));
 
   if (!state.currentTrack) {
+    offlineResolutionId += 1;
     interruptedPlayback = null;
     automaticResumeUsed = false;
     trackPrefetcher.clear();
@@ -208,9 +211,11 @@ function syncPlaybackState() {
     recoveryStage = 'initial';
     lastReportedTime = -1;
     restorePosition = state.currentTime;
-    const src = loadedTrack.audio || loadedTrack.audiodownload;
+    const track = loadedTrack;
+    const src = track.audio || track.audiodownload;
     state.setPlaybackError(null);
-    if (!src) {
+
+    if (!src && !prepared) {
       sourceGeneration += 1;
       invalidatePlay();
       loadedSrc = '';
@@ -222,8 +227,35 @@ function syncPlaybackState() {
       usePlayerStore.setState({ isPlaying: false, isBuffering: false, playbackError: 'This track has no playable stream.' });
       return;
     }
-    applySource(prepared?.url || src, prepared);
-    updateMediaSession(loadedTrack);
+
+    const resolutionId = ++offlineResolutionId;
+    if (prepared) {
+      applySource(prepared.url, prepared);
+      updateMediaSession(track);
+    } else {
+      void getOfflineBlob(track).then((blob) => {
+        if (resolutionId !== offlineResolutionId || usePlayerStore.getState().currentTrack !== track) return;
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const localPrepared: PreparedTrack = {
+            source: src,
+            url,
+            release: () => URL.revokeObjectURL(url),
+          };
+          applySource(url, localPrepared);
+        } else if (src) {
+          applySource(src);
+        } else {
+          usePlayerStore.setState({ isPlaying: false, isBuffering: false, playbackError: 'This track has no playable stream.' });
+        }
+        updateMediaSession(track);
+      }).catch(() => {
+        if (resolutionId !== offlineResolutionId || usePlayerStore.getState().currentTrack !== track) return;
+        if (src) applySource(src);
+        else usePlayerStore.setState({ isPlaying: false, isBuffering: false, playbackError: 'This track could not be loaded.' });
+        updateMediaSession(track);
+      });
+    }
   } else if (state.isPlaying && audio.paused) {
     requestPlay();
   }

@@ -8,6 +8,7 @@ import { useQueueActions } from '../hooks/useQueueActions';
 import { requireAuth } from '../utils/requireAuth';
 import { formatArtistNames } from '../utils/formatters';
 import { FALLBACK_ART } from '../utils/artwork';
+import { isOfflineSaved, removeOfflineTrack, saveOfflineTrack } from '../services/offlineLibrary';
 
 const MOBILE_BREAKPOINT = 768;
 const MENU_WIDTH = 244;
@@ -45,6 +46,8 @@ export function TrackContextMenu({
     typeof window !== 'undefined' ? window.innerWidth <= MOBILE_BREAKPOINT : false,
   );
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [offlineSaved, setOfflineSaved] = useState(false);
+  const [offlineBusy, setOfflineBusy] = useState(false);
 
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const playlists = usePlayerStore((state) => state.playlists);
@@ -58,6 +61,15 @@ export function TrackContextMenu({
   const { addToQueue, playNext } = useQueueActions();
 
   const isFavorite = favorites.some((item) => String(item.id) === String(track.id));
+
+  useEffect(() => {
+    if (!isOpen || !isAuthenticated) return;
+    let active = true;
+    void isOfflineSaved(track).then((saved) => {
+      if (active) setOfflineSaved(saved);
+    });
+    return () => { active = false; };
+  }, [isOpen, isAuthenticated, track]);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
@@ -213,6 +225,31 @@ export function TrackContextMenu({
     addToast({ type: 'success', message: `Added to favorites: ${track.name}` });
   }
 
+  async function handleToggleOffline() {
+    if (!requireAuth('login')) return;
+    setOfflineBusy(true);
+    try {
+      if (offlineSaved) {
+        await removeOfflineTrack(track);
+        setOfflineSaved(false);
+        addToast({ type: 'info', message: `Removed from offline music: ${track.name}` });
+      } else {
+        await saveOfflineTrack(track);
+        setOfflineSaved(true);
+        addToast({ type: 'success', message: `Available offline: ${track.name}` });
+      }
+      closeAndRestoreFocus();
+    } catch (error) {
+      addToast({
+        type: 'error',
+        title: 'Offline save failed',
+        message: error instanceof Error ? error.message : 'Soundrift could not save this track offline.',
+      });
+    } finally {
+      setOfflineBusy(false);
+    }
+  }
+
   function handleAddToPlaylist(targetId: string, targetName: string) {
     addTrackToPlaylist(targetId, track);
     addToast({ type: 'success', message: `Added to ${targetName}: ${track.name}` });
@@ -266,6 +303,13 @@ export function TrackContextMenu({
           )}
 
           <div className="action-menu-divider" role="separator" />
+
+          {isAuthenticated && (
+            <button type="button" role="menuitem" data-menu-item className="action-menu-item" disabled={offlineBusy} onClick={() => void handleToggleOffline()}>
+              <DownloadIcon />
+              <span>{offlineBusy ? 'Saving offline…' : offlineSaved ? 'Remove from offline' : 'Make available offline'}</span>
+            </button>
+          )}
 
           <button type="button" role="menuitem" data-menu-item className="action-menu-item" onClick={() => run(handleToggleFavorite)}>
             <HeartIcon filled={isAuthenticated && isFavorite} />
@@ -458,6 +502,10 @@ export function TrackContextMenu({
       )}
     </div>
   );
+}
+
+function DownloadIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></svg>;
 }
 
 function PlayIcon() {

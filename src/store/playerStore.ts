@@ -242,6 +242,7 @@ export type AppView =
   | 'search'
   | 'playlists'
   | 'favorites'
+  | 'offline'
   | 'recently-played'
   | 'history'
   | 'recent'
