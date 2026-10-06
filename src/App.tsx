@@ -22,6 +22,7 @@ const FavoritesPage = lazy(withChunkReload(() => import('./components/library/Fa
 const PlaylistsPage = lazy(withChunkReload(() => import('./components/library/PlaylistsPage').then(m => ({ default: m.PlaylistsPage }))));
 const PlaylistPage = lazy(withChunkReload(() => import('./components/library/PlaylistPage').then(m => ({ default: m.PlaylistPage }))));
 const HistoryPage = lazy(withChunkReload(() => import('./components/library/HistoryPage').then(m => ({ default: m.HistoryPage }))));
+const OfflineLibraryPage = lazy(withChunkReload(() => import('./components/library/OfflineLibraryPage').then(m => ({ default: m.OfflineLibraryPage }))));
 import { usePlayerStore, type AppView } from './store/playerStore';
 import { useToastStore } from './store/toastStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -66,7 +67,7 @@ function safeDecode(segment: string): string {
  * guest reaching them is sent home with an explanation rather than shown an
  * empty page that looks broken.
  */
-const PROTECTED_VIEWS: AppView[] = ['favorites', 'playlists', 'playlist', 'history'];
+const PROTECTED_VIEWS: AppView[] = ['favorites', 'playlists', 'playlist', 'history', 'offline'];
 
 /**
  * The one listen-log page. Recently Played was a second view over the same
@@ -87,6 +88,7 @@ function isSignedInPath(rawPath: string): boolean {
     path.includes('/favorites') ||
     path.includes('/playlists') ||
     path.includes('/history') ||
+    path.includes('/offline') ||
     HISTORY_ALIASES.includes(path)
   );
 }
@@ -253,6 +255,8 @@ function App() {
       usePlayerStore.getState().setCurrentView('favorites');
     } else if (path.includes('/playlists')) {
       usePlayerStore.getState().setCurrentView('playlists');
+    } else if (path.includes('/offline')) {
+      usePlayerStore.getState().setCurrentView('offline');
     } else if (path.includes('/history') || HISTORY_ALIASES.includes(path)) {
       usePlayerStore.getState().setCurrentView('history');
     } else if (path === '/') {
@@ -471,6 +475,13 @@ function App() {
           </div>
         );
 
+      case 'offline':
+        return (
+          <div className="view-container">
+            <Suspense fallback={null}><OfflineLibraryPage /></Suspense>
+          </div>
+        );
+
       case 'playlists':
         return (
           <div className="view-container">
@@ -573,7 +584,7 @@ function App() {
             because cached songs keep playing and still need pause and skip. */}
         <div className="app-content">
           {isOffline ? (
-            <OfflinePage onRetry={retryConnection} />
+            currentView === 'offline' ? <OfflineLibraryPage /> : <OfflinePage onRetry={retryConnection} />
           ) : isAwaitingAuth ? (
             /* The first session check is quick, so it shows nothing; a check being retried
                keeps the destination pending instead of showing guest Home at a signed-in URL. */
